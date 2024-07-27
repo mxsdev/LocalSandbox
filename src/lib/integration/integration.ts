@@ -127,7 +127,15 @@ export function createIntegration<
     ]
   })
 
-  return new IntegrationBuilder(createRouteFn, {})
+  return new IntegrationBuilder(
+    createRouteFn,
+    {},
+    {
+      cleanup: async () => {
+        db.close()
+      },
+    }
+  )
 }
 
 type EdgeSpecRouteMap<GS extends GlobalSpec> = Record<
@@ -144,31 +152,38 @@ export class IntegrationBuilder<
 > {
   constructor(
     private readonly createWithRouteFn: CreateWithRouteSpecFn<GS>,
-    private readonly routeMap: RouteMap
+    private readonly routeMap: RouteMap,
+    private readonly options: {
+      cleanup: () => Promise<void>
+    }
   ) {}
 
   withRoute<
     const Route extends string,
     const RS extends RouteSpec<GetAuthMiddlewaresFromGlobalSpec<GS>>
   >(url: Route, routeSpec: RS, route: EdgeSpecRouteFnFromSpecs<GS, RS>) {
-    return new IntegrationBuilder(this.createWithRouteFn, {
-      ...this.routeMap,
-      [url]: [
-        ...(this.routeMap[url] ?? []),
-        {
-          routeFn: this.createWithRouteFn(routeSpec)(route),
-          routeSpec,
-        },
-      ],
-    } as RouteMap & {
-      [key in Route]: [
-        ...(RouteMap[key] extends any[] ? RouteMap[key] : []),
-        {
-          routeFn: EdgeSpecRouteFn
-          routeSpec: RS
-        }
-      ]
-    })
+    return new IntegrationBuilder(
+      this.createWithRouteFn,
+      {
+        ...this.routeMap,
+        [url]: [
+          ...(this.routeMap[url] ?? []),
+          {
+            routeFn: this.createWithRouteFn(routeSpec)(route),
+            routeSpec,
+          },
+        ],
+      } as RouteMap & {
+        [key in Route]: [
+          ...(RouteMap[key] extends any[] ? RouteMap[key] : []),
+          {
+            routeFn: EdgeSpecRouteFn
+            routeSpec: RS
+          }
+        ]
+      },
+      this.options
+    )
   }
 
   build() {
@@ -213,3 +228,13 @@ export class IntegrationBuilder<
     }
   }
 }
+
+export type Integration = Awaited<
+  ReturnType<IntegrationBuilder<any, any>["build"]>
+>
+
+export interface IntegrationConfig {}
+
+export type IntegrationFactory = (
+  config: IntegrationConfig
+) => Promise<Integration> | Integration

@@ -3,7 +3,7 @@ import {
   EdgeSpecRouteMap,
   makeRequestAgainstEdgeSpec,
 } from "edgespec"
-import getRouteMatcher from "next-route-matcher"
+import { getRouteMatcher } from "next-route-matcher"
 
 export function routeBundleFromRouteMap(
   routeMap: EdgeSpecRouteMap
