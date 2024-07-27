@@ -1,0 +1,18 @@
+export { ConfigEnv, Plugin, UserConfig, mergeConfig } from 'vite';
+export { aO as UserConfigExport, aN as UserConfigFn, aL as UserConfigFnObject, aM as UserConfigFnPromise, aQ as UserProjectConfigExport, aP as UserProjectConfigFn, K as UserWorkspaceConfig, aV as configDefaults, aY as coverageConfigDefaults, aU as defaultBrowserPort, aX as defaultExclude, aW as defaultInclude, aR as defineConfig, aS as defineProject, aT as defineWorkspace, aZ as extraInlineDeps } from './reporters-B7ebVMkT.js';
+import '@vitest/pretty-format';
+import '@vitest/runner';
+import 'vite-node';
+import '@vitest/snapshot';
+import '@vitest/expect';
+import '@vitest/runner/utils';
+import '@vitest/utils';
+import 'tinybench';
+import 'node:stream';
+import 'vite-node/client';
+import '@vitest/snapshot/manager';
+import 'vite-node/server';
+import 'node:worker_threads';
+import '@vitest/utils/source-map';
+import 'node:fs';
+import 'chai';

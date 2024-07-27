@@ -1,0 +1,26 @@
+{
+  "name": "cloud-sandbox",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "edgespec": "^0.0.72",
+    "kysely": "^0.27.4",
+    "next-route-matcher": "^1.0.2",
+    "sql.js": "^1.10.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/sql.js": "^1.4.9",
+    "openapi3-ts": "^4.3.3",
+    "type-fest": "^4.23.0",
+    "vitest": "^2.0.4"
+  }
+}

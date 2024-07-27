@@ -1,0 +1,78 @@
+export { G as GitNotFoundError, F as TestsNotFoundError, b as VitestPackageInstaller, V as VitestPlugin, a as createMethodsRPC, c as createVitest, g as getFilePoolName, r as registerConsoleShortcuts, e as resolveApiServerConfig, f as resolveConfig, d as resolveFsAllow, s as startVitest } from './vendor/cli-api.CTkP2Ier.js';
+export { p as parseCLI } from './vendor/cac.DFtWvZc2.js';
+import createDebug from 'debug';
+export { distDir, rootDir } from './path.js';
+export { e as BaseSequencer } from './vendor/index.CuuL9y4g.js';
+export { createServer, isFileServingAllowed, parseAst, parseAstAsync } from 'vite';
+import 'node:fs';
+import 'pathe';
+import './vendor/coverage.BhYSDdTT.js';
+import './vendor/index.D4nqnQWz.js';
+import 'node:console';
+import './vendor/index.D6GZqexG.js';
+import 'node:path';
+import 'node:url';
+import 'node:process';
+import './vendor/_commonjsHelpers.BFTU3MAI.js';
+import 'readline';
+import 'events';
+import './vendor/constants.CsnA4eRy.js';
+import 'node:worker_threads';
+import 'os';
+import 'path';
+import 'util';
+import './vendor/index.BMmMjLIQ.js';
+import 'stream';
+import 'fs';
+import 'vite-node/client';
+import '@vitest/snapshot/manager';
+import 'vite-node/server';
+import '@vitest/runner/utils';
+import './vendor/base.DRHPZCCj.js';
+import '@vitest/utils';
+import './vendor/env.2ltrQNq0.js';
+import 'std-env';
+import './vendor/index.BpSiYbpB.js';
+import 'zlib';
+import 'buffer';
+import 'crypto';
+import 'https';
+import 'http';
+import 'net';
+import 'tls';
+import 'url';
+import '@vitest/utils/source-map';
+import 'node:v8';
+import 'node:os';
+import 'node:events';
+import 'tinypool';
+import 'node:crypto';
+import 'node:fs/promises';
+import 'node:module';
+import 'node:assert';
+import 'node:util';
+import 'tinyrainbow';
+import 'vite-node/utils';
+import 'magic-string';
+import '@vitest/utils/ast';
+import './vendor/index.BJmtb_7W.js';
+import './vendor/global.7bFbnyXl.js';
+import 'node:readline';
+import './vendor/utils.BySfPUwy.js';
+import './vendor/tasks.DhVtQBtW.js';
+import 'node:perf_hooks';
+import './chunks/runtime-console.C2L2zykk.js';
+import 'node:stream';
+import './vendor/date.W2xKR2qe.js';
+import 'execa';
+import 'module';
+import 'assert';
+
+function createDebugger(namespace) {
+  const debug = createDebug(namespace);
+  if (debug.enabled) {
+    return debug;
+  }
+}
+
+export { createDebugger };
