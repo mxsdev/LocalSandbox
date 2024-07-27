@@ -1,9 +1,6 @@
-import { startServer } from "edgespec/adapters/node"
-import { bundle } from "../lib/api"
+import { serve } from "../lib/api/serve"
 
-const server = await startServer(bundle, {
-  port: 8000,
-})
+const server = await serve(8000)
 
 console.log("listening!")
 

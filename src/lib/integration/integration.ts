@@ -225,13 +225,18 @@ export class IntegrationBuilder<
 
     return {
       edgeSpecRouteBundle,
+
+      // include type information for later introspection
+      _globalSpec: {} as GS,
+      _routeMap: {} as RouteMap,
     }
   }
 }
 
-export type Integration = Awaited<
-  ReturnType<IntegrationBuilder<any, any>["build"]>
->
+export type Integration<
+  GS extends GlobalSpec = any,
+  RouteMap extends EdgeSpecRouteMap<GS> = {}
+> = Awaited<ReturnType<IntegrationBuilder<GS, RouteMap>["build"]>>
 
 export interface IntegrationConfig {}
 

@@ -51,7 +51,7 @@ export const github_integration: IntegrationFactory = () => {
         await ctx.kysely
           .insertInto("user")
           .values({
-            id: `user-${ct++}`,
+            id: `user-${++ct}`,
           })
           .execute()
 
