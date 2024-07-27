@@ -7,19 +7,15 @@ import {
   type GetAuthMiddlewaresFromGlobalSpec,
   type GlobalSpec,
   type RouteSpec,
-  type EdgeSpecRequest,
   createWithEdgeSpec,
-  wrapMiddlewares,
   makeRequestAgainstEdgeSpec,
   HTTPMethods,
 } from "edgespec"
 import { type Middleware } from "edgespec/middleware"
 import { getRouteMatcher } from "next-route-matcher"
-import { Kysely, SqliteDialect } from "kysely"
+import { Kysely } from "kysely"
 import initSqlJs from "sql.js"
 import { SqlJsDialect } from "../kysely-sql-js"
-// import { DB } from "sqlite"
-// import { createDenoSqliteKysely } from "../kysely/create-kysely.ts"
 
 type ZodModelToKysely<T extends z.ZodObject<z.ZodRawShape>> = {
   [K in keyof T["shape"]]: z.output<T["shape"][K]>
