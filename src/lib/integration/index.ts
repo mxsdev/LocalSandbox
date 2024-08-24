@@ -1,8 +1,4 @@
-import { github_integration } from "./github"
+import { azure_integration } from "./azure"
 import { IntegrationFactory } from "./integration"
 
-export const INTEGRATIONS = {
-  github: github_integration,
-} satisfies Record<string, IntegrationFactory>
-
-export type SupportedIntegration = keyof typeof INTEGRATIONS
+export const ROOT_INTEGRATION = azure_integration

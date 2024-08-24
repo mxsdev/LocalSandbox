@@ -1,13 +1,9 @@
 import { test } from "vitest"
-import { Client, createClient } from "../lib/api/client"
-import getPort from "get-port"
-import { serve } from "../lib/api/serve"
-import { testPort } from "./setup"
+import { testPort } from "./setup.js"
 import { randomUUID } from "node:crypto"
 
 export interface TestContext {
   api: {
-    client: Client
     baseURL: URL
     id: string
   }
@@ -20,15 +16,9 @@ export const fixturedTest = test.extend<TestContext>({
 
     const port = testPort
     const id = randomUUID()
-    const baseURL = new URL(`http://127.0.0.1:${port}`)
-
-    const client = createClient({
-      baseURL,
-      id,
-    })
+    const baseURL = new URL(`https://127.0.0.1:${port}/${id}`)
 
     await use({
-      client,
       baseURL,
       id,
     })
