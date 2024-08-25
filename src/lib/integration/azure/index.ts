@@ -17,6 +17,7 @@ export const azure_integration: IntegrationFactory = () => {
   const integration = createIntegration({
     globalSpec: {
       authMiddleware: {},
+      passErrors: true,
     },
     models: createModelSpecs({
       user: {
@@ -24,7 +25,7 @@ export const azure_integration: IntegrationFactory = () => {
         schema: z.object({
           id: z.string(),
         }),
-        hasOne: ["subscription"],
+        // hasOne: ["subscription"],
       },
       subscription: {
         primaryKey: "subscriptionId",
@@ -51,93 +52,7 @@ export const azure_integration: IntegrationFactory = () => {
         ok: z.boolean(),
       }),
     })
-    .withRoute(
-      "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.Compute/virtualMachines/[vmName]",
-      vmRoutes[
-        "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.Compute/virtualMachines/[vmName]"
-      ][0],
-    )
-    .withRoute(
-      "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.Compute/virtualMachines/[vmName]",
-      vmRoutes[
-        "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.Compute/virtualMachines/[vmName]"
-      ][1],
-    )
-    .withRoute(
-      "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.Compute/virtualMachines/[vmName]",
-      vmRoutes[
-        "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.Compute/virtualMachines/[vmName]"
-      ][2],
-    )
     .withRoute("/subscriptions", subscriptionRoutes["/subscriptions"][0])
-
-  // const X: Required<z.output<typeof virtualMachine>> = {
-  //   name: "myVM",
-  //   location: "",
-
-  //   properties: {
-  //     applicationProfile: {},
-
-  //     networkProfile: {
-  //       networkInterfaces: [
-  //         {
-  //           id: "id1",
-  //         },
-  //         {
-  //           id: "id2",
-  //         },
-  //       ],
-  //     },
-
-  //     hardwareProfile: {
-  //       vmSize: "Standard_DS1_v2",
-  //     },
-
-  //     storageProfile: {
-  //       imageReference: {
-  //         publisher: "Canonical",
-  //         offer: "0001-com-ubuntu-server-jammy",
-  //         sku: "22_04-lts-gen2",
-  //         version: "latest",
-  //       },
-  //       osDisk: {
-  //         createOption: "FromImage",
-  //         name: "myOsDisk",
-  //         caching: "ReadWrite",
-  //         managedDisk: {
-  //           storageAccountType: "Premium_LRS",
-  //         },
-  //       },
-  //     },
-
-  //     osProfile: {
-  //       computerName: "hostname",
-  //       adminUsername: "admin",
-  //       linuxConfiguration: {
-  //         ssh: {
-  //           publicKeys: [],
-  //         },
-  //       },
-  //     },
-
-  //     diagnosticsProfile: {
-  //       bootDiagnostics: {
-  //         enabled: true,
-  //         storageUri: "",
-  //       },
-  //     },
-  //   },
-  // }
-
-  // integration.implementRoute(
-  //   "GET",
-  //   "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.Compute/virtualMachines/[vmName]",
-  //   async (req, ctx) => {
-  //     const { resourceGroupName, subscriptionId, vmName } = req.routeParams
-
-  //     // return ctx.json()
-  //   },
-  // )
 
   integration.implementRoute("GET", "/subscriptions", async (req, ctx) => {
     // TODO: filter based on auth
@@ -158,21 +73,21 @@ export const azure_integration: IntegrationFactory = () => {
       message: `hi! users: ${ctx.store.user
         .select()
         .execute()
-        .map((u) => u.subscription())
+        .map((u) => u.id)
         .join(", ")}`,
     })
   })
 
-  // integration.implementRoute("POST", "/hello", async (_, ctx) => {
-  //   ctx.store.user
-  //     .insert()
-  //     .values({
-  //       id: `user-${++ct}`,
-  //     })
-  //     .execute()
+  integration.implementRoute("POST", "/hello", async (_, ctx) => {
+    ctx.store.user
+      .insert()
+      .values({
+        id: `user-${++ct}`,
+      })
+      .execute()
 
-  // return ctx.json({ ok: true })
-  // })
+    return ctx.json({ ok: true })
+  })
 
   return integration.build()
 }

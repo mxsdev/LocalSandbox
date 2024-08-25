@@ -1,29 +1,28 @@
 {
     "compilerOptions": {
         "strict": true,
-        // "allowUnusedLabels": false,
         "allowUnreachableCode": false,
-        // "exactOptionalPropertyTypes": true,
         "noFallthroughCasesInSwitch": true,
         "noImplicitOverride": true,
         "noImplicitReturns": true,
         "noPropertyAccessFromIndexSignature": true,
         "noUncheckedIndexedAccess": true,
-        // "noUnusedLocals": true,
-        // "noUnusedParameters": true,
-
-        // "importsNotUsedAsValues": "error",
-        "checkJs": true,
-
+        
         "esModuleInterop": true,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
-        //
+        
+        "checkJs": false,
+
         "isolatedModules": true, // https://preconstruct.tools/guides/building-typescript-packages
         "noEmit": true,
         "allowSyntheticDefaultImports": true,
-        "lib": ["es2022"],
-        "target": "ES2017",
-        "module": "NodeNext"
+
+        "target": "ES2021",
+        "module": "Node16",
+        "paths": {
+            "edgespec": ["./src/lib/edgespec/index.ts"],
+            "edgespec/*": ["./src/lib/edgespec/*"]
+        }
     }
 }

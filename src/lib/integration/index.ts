@@ -1,4 +1,3 @@
-import { azure_integration } from "./azure"
-import { IntegrationFactory } from "./integration"
+import { azure_integration } from "./azure/index.js"
 
 export const ROOT_INTEGRATION = azure_integration

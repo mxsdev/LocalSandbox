@@ -1,11 +1,10 @@
-import { promisify } from "node:util"
 import { PassThrough } from "node:stream"
 import { createWithEdgeSpec, EdgeSpecRouteMap, Middleware } from "edgespec"
 import { z } from "zod"
-import { routeBundleFromRouteMap } from "../edgespec/route-bundle-from-route-map.js"
+import { routeBundleFromRouteMap } from "../edgespec-util/route-bundle-from-route-map.js"
 import { Integration } from "../integration/integration.js"
 import { Mutex } from "async-mutex"
-import { createWithDefaultExceptionHandling } from "edgespec/middleware"
+import { createWithDefaultExceptionHandling } from "edgespec/middleware/index.js"
 import { ROOT_INTEGRATION } from "../integration/index.js"
 import { getLogger } from "../logger/index.js"
 
@@ -36,7 +35,7 @@ const routeLoggingMiddleware: Middleware = async (req, ctx, next) => {
     console.log((chunk.toString() as string).slice(0, -1))
   })
 
-  logger.debug({ url: req.url }, "Got API Request")
+  logger.debug({ url: req.url, method: req.method }, "Got API Request")
 
   const res = await next(req, ctx)
 

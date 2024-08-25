@@ -11,6 +11,7 @@ import {
   makeRequestAgainstEdgeSpec,
   HTTPMethods,
   Middleware,
+  EdgeSpecRouteMap,
 } from "edgespec"
 import { getRouteMatcher } from "next-route-matcher"
 
@@ -147,22 +148,6 @@ class Model<
                     })
                     .execute(),
               ]),
-            // this.spec.hasOne?.map((key) => [
-            //   key,
-            //   () =>
-            //     this.models[key as keyof Store<Root>]
-            //       .select()
-            //       .where((v: any) => {
-            //         return (
-            //           v[
-            //             this.models[key as keyof Root & string]["spec"][
-            //               "primaryKey"
-            //             ]
-            //           ] === (data as any)[idField(key)]
-            //         )
-            //       })
-            //       .executeTakeFirstOrThrow(),
-            // ]) ?? [],
           ),
         },
       ]),
@@ -383,10 +368,7 @@ export function createIntegration<
 >(integrationSpec: IntegrationSpec<MS, GS>) {
   const { models: modelSpecs, globalSpec } = integrationSpec
 
-  const models = Object.entries(modelSpecs).map(([modelName, modelSpec]) => [
-    modelName,
-    new Model(modelSpec as any, models, modelName),
-  ]) as Store<MS>
+  const models = getStore(modelSpecs)
 
   // type KyselyDB = ZodModelSpecToKyselyDB<MS>
 
@@ -453,13 +435,13 @@ export function createIntegration<
   )
 }
 
-type EdgeSpecRouteMap<GS extends GlobalSpec> = Record<
-  string,
-  {
-    routeFn?: EdgeSpecRouteFn
-    routeSpec: RouteSpec<GetAuthMiddlewaresFromGlobalSpec<GS>>
-  }[]
->
+// type EdgeSpecRouteMap<GS extends GlobalSpec> = Record<
+//   string,
+//   {
+//     routeFn: EdgeSpecRouteFn
+//     routeSpec: RouteSpec<GetAuthMiddlewaresFromGlobalSpec<GS>>
+//   }[]
+// >
 
 // type ExpandRouteMapMethods<
 //   Routes extends EdgeSpecRouteMap<any>[string],
@@ -497,6 +479,11 @@ type ExtractCompatibleMethodFromRouteMap<
 //   "GET"
 // >
 
+const UNIMPLEMENTED_ROUTE: () => Response = () =>
+  new Response("Not Implemented", {
+    status: 501,
+  })
+
 export class IntegrationBuilder<
   const GS extends GlobalSpec,
   RouteMap extends EdgeSpecRouteMap<GS> = {},
@@ -525,12 +512,10 @@ export class IntegrationBuilder<
                   routeFn: this.createWithRouteFn(routeSpec)(route),
                 }
               : {
-                  routeFn: () =>
-                    new Response("Not Implemented", {
-                      status: 501,
-                    }),
+                  routeFn: UNIMPLEMENTED_ROUTE,
                 }),
             routeSpec,
+            unimplemented: true,
           },
         ],
       } as unknown as Omit<RouteMap, Route> & {
@@ -560,46 +545,40 @@ export class IntegrationBuilder<
       >["routeSpec"]
     >,
   ) {
-    const methodsArr = Array.isArray(methods) ? methods : [methods]
+    const routeMethods = Array.isArray(methods) ? methods : [methods]
 
-    const match = this.routeMap[url]!.find((el) =>
-      methodsArr.every((m) => el.routeSpec.methods.includes(m)),
-    )!
+    const routes = this.routeMap[url]
+    let existingRoute = routes?.find((route) =>
+      routeMethods.every((m) => route.routeSpec.methods.includes(m)),
+    )
 
-    match.routeFn = this.createWithRouteFn(match.routeSpec)(routeFn as any)
+    if (!routes || !existingRoute) {
+      throw new Error("No such route url exists!")
+    }
+
+    if (!("unimplemented" in existingRoute && existingRoute["unimplemented"])) {
+      existingRoute = { ...existingRoute }
+      routes.push(existingRoute)
+    }
+
+    existingRoute.routeFn = this.createWithRouteFn(existingRoute.routeSpec)(
+      routeFn as any,
+    )[0]!.routeFn
   }
 
   build() {
-    const routesMap = Object.fromEntries(
-      Object.entries(this.routeMap).map(([route, routes]) => [
-        route,
-        routes.map(({ routeFn }) => routeFn),
-      ]),
-    )
+    // const routesMap = Object.fromEntries(
+    //   Object.entries(this.routeMap).map(([route, routes]) => [
+    //     route,
+    //     routes.map(({ routeFn }) => routeFn),
+    //   ]),
+    // )
 
     const edgeSpecRouteBundle: EdgeSpecRouteBundle = {
-      routeMatcher: getRouteMatcher(Object.keys(routesMap)),
-      routeMapWithHandlers: {},
+      routeMatcher: getRouteMatcher(Object.keys(this.routeMap)),
+      routeMapWithHandlers: this.routeMap,
       makeRequest: async (req, options) =>
-        makeRequestAgainstEdgeSpec(
-          {
-            ...edgeSpecRouteBundle,
-            routeMapWithHandlers: Object.fromEntries(
-              Object.entries(this.routeMap)
-                .map(
-                  ([route, routes]) =>
-                    [
-                      route,
-                      routes.find(({ routeSpec }) =>
-                        routeSpec.methods.includes(req.method as HTTPMethods),
-                      )?.routeFn!,
-                    ] as const,
-                )
-                .filter(([_, v]) => Boolean(v)),
-            ),
-          },
-          options,
-        )(req),
+        makeRequestAgainstEdgeSpec(edgeSpecRouteBundle, options)(req),
     }
 
     // to make request:

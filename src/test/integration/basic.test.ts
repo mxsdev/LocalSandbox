@@ -11,7 +11,7 @@ import { SubscriptionClient } from "@azure/arm-subscriptions"
 import { getLogger } from "../../lib/logger/index.js"
 import { PassThrough } from "node:stream"
 
-fixturedTest.skip("basic test", async ({ api }) => {
+fixturedTest("basic test", async ({ api }) => {
   const endpoint = new URL(api.baseURL.toString() + "/hello")
   {
     const res = await fetch(endpoint, {}).then((r) => r.json())

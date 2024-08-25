@@ -1,4 +1,4 @@
-import { getNodeHandler, startServer } from "edgespec/adapters/node"
+import { getNodeHandler, startServer } from "edgespec/adapters/node.js"
 import { bundle } from "./index.js"
 import https from "node:https"
 
