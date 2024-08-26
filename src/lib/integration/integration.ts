@@ -214,6 +214,10 @@ class Model<
     return new ModelSelectBuilder(this)
   }
 
+  update() {
+    return new ModelSelectBuilder(this)
+  }
+
   insert() {
     return new ModelInsertBuilder(this)
   }
@@ -242,15 +246,61 @@ class ModelSelectBuilder<
     return this
   }
 
-  execute(): Output[] {
-    return Object.values(this.root["store"]).filter((val): val is Output =>
-      this.whereRules.every((rule) =>
-        rule(val as SpecWhereCheck<Root, Spec, ModelName>),
-      ),
+  updates: ((
+    val: SpecWhereCheck<Root, Spec, ModelName>,
+  ) => Partial<SpecWithRelationalId<Root, Spec>>)[] = []
+
+  set(
+    updateFn:
+      | (typeof this.updates)[number]
+      | ReturnType<(typeof this.updates)[number]>,
+  ): this {
+    this.updates.push(
+      typeof updateFn === "function" ? updateFn : () => updateFn,
     )
+    return this
+  }
+
+  execute(): Output[] {
+    const getMatches = () =>
+      Object.values(this.root["store"]).filter((val): val is Output =>
+        this.whereRules.every((rule) =>
+          rule(val as SpecWhereCheck<Root, Spec, ModelName>),
+        ),
+      )
+
+    if (this.updates.length > 0) {
+      for (const match of getMatches()) {
+        const id = match[this.root["spec"].primaryKey as keyof Output]
+
+        let updates: any = {}
+
+        for (const update of this.updates) {
+          updates = {
+            ...updates,
+            ...update(match as any),
+          }
+        }
+
+        if (this.root["spec"].primaryKey in updates) {
+          throw new Error("Cannot update primary key")
+        }
+
+        this.root["_store"][id] = {
+          ...this.root["_store"][id],
+          ...updates,
+        }
+      }
+    }
+
+    return getMatches()
   }
 
   executeTakeFirst(): Output | undefined {
+    if (this.updates.length > 0) {
+      return this.execute()[0]
+    }
+
     return Object.values(this.root["store"]).find((val): val is Output =>
       this.whereRules.every((rule) =>
         rule(val as SpecWhereCheck<Root, Spec, ModelName>),

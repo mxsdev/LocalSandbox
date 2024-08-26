@@ -157,34 +157,38 @@ export const createAzureIntegration: IntegrationFactory = () => {
     },
   )
 
-  // integration.implementRoute(
-  //   "PATCH",
-  //   "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
-  //   async (req, ctx) => {
-  //     const parameters = req.jsonBody
+  integration.implementRoute(
+    "PATCH",
+    "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+    async (req, ctx) => {
+      const parameters = req.jsonBody
 
-  //     if (
-  //       parameters.name &&
-  //       parameters.name !== req.routeParams.resourceGroupName
-  //     ) {
-  //       // TODO: make this the same as prod...
-  //       throw new Error("Invalid name")
-  //     }
+      if (
+        parameters.name &&
+        parameters.name !== req.routeParams.resourceGroupName
+      ) {
+        // TODO: make this the same as prod...
+        throw new Error("Invalid name")
+      }
 
-  //     const resourceGroup = ctx.store.resource_group
-  //       .insert()
-  //       .values({
-  //         ...parameters,
-  //         // TODO: support unique indexes
-  //         name: parameters.name ?? req.routeParams.resourceGroupName,
-  //         subscription_id: ctx.subscription.subscriptionId,
-  //       })
-  //       .onAllConflictMerge()
-  //       .executeTakeFirstOrThrow()
+      const resourceGroup = ctx.store.resource_group
+        .update()
+        .where(
+          (rg) =>
+            ctx.subscription.subscriptionId ===
+            rg.subscription().subscriptionId,
+        )
+        .where(
+          (rg) =>
+            rg.subscription().subscriptionId === req.routeParams.subscriptionId,
+        )
+        .where((rg) => rg.name === req.routeParams.resourceGroupName)
+        .set(parameters)
+        .executeTakeFirstOrThrow()
 
-  //     return ctx.json(resourceGroup)
-  //   },
-  // )
+      return ctx.json(resourceGroup)
+    },
+  )
 
   integration.implementRoute(
     "GET",

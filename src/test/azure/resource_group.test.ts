@@ -28,6 +28,26 @@ fixturedTest("can upsert resource group", async ({ azure, expect }) => {
   })
 })
 
+fixturedTest("can update resource group", async ({ azure, expect }) => {
+  await azure.resource_client.resourceGroups.createOrUpdate("rg", {
+    location: "westus2",
+  })
+
+  const resource_group2 = await azure.resource_client.resourceGroups.update(
+    "rg",
+    {
+      tags: {
+        hello: "world",
+      },
+    },
+  )
+
+  expect(resource_group2).toMatchObject<ResourceGroup>({
+    location: "westus2",
+    tags: { hello: "world" },
+  })
+})
+
 fixturedTest("can get a resource group", async ({ azure, expect }) => {
   await azure.resource_client.resourceGroups.createOrUpdate("rg", {
     location: "westus2",
