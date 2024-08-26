@@ -227,7 +227,15 @@ export const convertAPISchemaToZod = async (
 
       result.paths[normalizedPathName] ??= []
 
-      for (const method of ["post", "put", "patch", "get", "head"] as const) {
+      for (const method of [
+        "post",
+        "put",
+        "patch",
+        "get",
+        "head",
+        "options",
+        "delete",
+      ] as const) {
         if (!pathSpec[method]) continue
 
         const pathParams: Record<string, string> = {}

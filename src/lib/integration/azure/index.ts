@@ -15,6 +15,7 @@ import { Middleware } from "edgespec"
 import { bearerToken } from "../../util/bearer-token.js"
 import { resourceGroup } from "../../../../output/resources/resource-manager/Microsoft.Resources/stable/2024-07-01/resources.js"
 import { NotFoundError } from "edgespec/middleware/http-exceptions.js"
+import { extractRoute } from "../../openapi/extract-route.js"
 
 export const DEFAULT_SUBSCRIPTION_DISPLAY_NAME =
   "LocalSandbox Test Subscription"
@@ -96,28 +97,39 @@ export const createAzureIntegration: IntegrationFactory = () => {
   })
     .withRoute("/subscriptions", subscriptionRoutes["/subscriptions"][0])
     .withRoute(
-      "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
-      resourceRoutes[
-        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]"
-      ][0],
+      ...extractRoute(
+        resourceRoutes,
+        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+        "GET",
+      ),
     )
     .withRoute(
-      "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
-      resourceRoutes[
-        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]"
-      ][1],
+      ...extractRoute(
+        resourceRoutes,
+        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+        "PUT",
+      ),
     )
     .withRoute(
-      "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
-      resourceRoutes[
-        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]"
-      ][2],
+      ...extractRoute(
+        resourceRoutes,
+        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+        "PATCH",
+      ),
     )
     .withRoute(
-      "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
-      resourceRoutes[
-        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]"
-      ][3],
+      ...extractRoute(
+        resourceRoutes,
+        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+        "DELETE",
+      ),
+    )
+    .withRoute(
+      ...extractRoute(
+        resourceRoutes,
+        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+        "HEAD",
+      ),
     )
 
   integration.implementRoute("GET", "/subscriptions", async (_, ctx) => {
@@ -237,6 +249,8 @@ export const createAzureIntegration: IntegrationFactory = () => {
       return new Response(null, { status: 204 })
     },
   )
+
+  // TODO: DELETE endpoint
 
   return integration.build()
 }

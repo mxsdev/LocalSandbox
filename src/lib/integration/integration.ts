@@ -221,6 +221,10 @@ class Model<
   insert() {
     return new ModelInsertBuilder(this)
   }
+
+  delete() {
+    return this.select()["delete"]()
+  }
 }
 
 class ModelSelectBuilder<
@@ -261,6 +265,12 @@ class ModelSelectBuilder<
     return this
   }
 
+  delete_mode = false
+  private delete(): this {
+    this.delete_mode = true
+    return this
+  }
+
   execute(): Output[] {
     const getMatches = () =>
       Object.values(this.root["store"]).filter((val): val is Output =>
@@ -269,26 +279,30 @@ class ModelSelectBuilder<
         ),
       )
 
-    if (this.updates.length > 0) {
+    if (this.updates.length > 0 || this.delete_mode) {
       for (const match of getMatches()) {
         const id = match[this.root["spec"].primaryKey as keyof Output]
 
-        let updates: any = {}
+        if (this.updates.length > 0) {
+          let updates: any = {}
 
-        for (const update of this.updates) {
-          updates = {
-            ...updates,
-            ...update(match as any),
+          for (const update of this.updates) {
+            updates = {
+              ...updates,
+              ...update(match as any),
+            }
           }
-        }
 
-        if (this.root["spec"].primaryKey in updates) {
-          throw new Error("Cannot update primary key")
-        }
+          if (this.root["spec"].primaryKey in updates) {
+            throw new Error("Cannot update primary key")
+          }
 
-        this.root["_store"][id] = {
-          ...this.root["_store"][id],
-          ...updates,
+          this.root["_store"][id] = {
+            ...this.root["_store"][id],
+            ...updates,
+          }
+        } else if (this.delete_mode) {
+          delete this.root["_store"][id]
         }
       }
     }

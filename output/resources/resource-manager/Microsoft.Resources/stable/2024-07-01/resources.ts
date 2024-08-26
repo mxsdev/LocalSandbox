@@ -1349,6 +1349,19 @@ export default {
         deploymentName: z.string().describe("The name of the deployment."),
       }),
     },
+    {
+      methods: ["DELETE"],
+      queryParams: z.object({
+        "api-version": z
+          .string()
+          .describe("The API version to use for this operation."),
+      }),
+      routeParams: z.object({
+        scope: z.string().describe("The resource scope."),
+        deploymentName: z.string().describe("The name of the deployment."),
+      }),
+      jsonBody: z.object({}),
+    },
   ],
   "/[scope]/providers/Microsoft.Resources/deployments/[deploymentName]/cancel":
     [
@@ -1480,6 +1493,18 @@ export default {
       routeParams: z.object({
         deploymentName: z.string().describe("The name of the deployment."),
       }),
+    },
+    {
+      methods: ["DELETE"],
+      queryParams: z.object({
+        "api-version": z
+          .string()
+          .describe("The API version to use for this operation."),
+      }),
+      routeParams: z.object({
+        deploymentName: z.string().describe("The name of the deployment."),
+      }),
+      jsonBody: z.object({}),
     },
   ],
   "/providers/Microsoft.Resources/deployments/[deploymentName]/cancel": [
@@ -1626,6 +1651,19 @@ export default {
           groupId: z.string().describe("The management group ID."),
           deploymentName: z.string().describe("The name of the deployment."),
         }),
+      },
+      {
+        methods: ["DELETE"],
+        queryParams: z.object({
+          "api-version": z
+            .string()
+            .describe("The API version to use for this operation."),
+        }),
+        routeParams: z.object({
+          groupId: z.string().describe("The management group ID."),
+          deploymentName: z.string().describe("The name of the deployment."),
+        }),
+        jsonBody: z.object({}),
       },
     ],
   "/providers/Microsoft.Management/managementGroups/[groupId]/providers/Microsoft.Resources/deployments/[deploymentName]/cancel":
@@ -1788,6 +1826,21 @@ export default {
             .string()
             .describe("The Microsoft Azure subscription ID."),
         }),
+      },
+      {
+        methods: ["DELETE"],
+        queryParams: z.object({
+          "api-version": z
+            .string()
+            .describe("The API version to use for this operation."),
+        }),
+        routeParams: z.object({
+          deploymentName: z.string().describe("The name of the deployment."),
+          subscriptionId: z
+            .string()
+            .describe("The Microsoft Azure subscription ID."),
+        }),
+        jsonBody: z.object({}),
       },
     ],
   "/subscriptions/[subscriptionId]/providers/Microsoft.Resources/deployments/[deploymentName]/cancel":
@@ -1975,6 +2028,26 @@ export default {
             .string()
             .describe("The Microsoft Azure subscription ID."),
         }),
+      },
+      {
+        methods: ["DELETE"],
+        queryParams: z.object({
+          "api-version": z
+            .string()
+            .describe("The API version to use for this operation."),
+        }),
+        routeParams: z.object({
+          resourceGroupName: z
+            .string()
+            .describe(
+              "The name of the resource group with the deployment to delete. The name is case insensitive.",
+            ),
+          deploymentName: z.string().describe("The name of the deployment."),
+          subscriptionId: z
+            .string()
+            .describe("The Microsoft Azure subscription ID."),
+        }),
+        jsonBody: z.object({}),
       },
     ],
   "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]/providers/Microsoft.Resources/deployments/[deploymentName]/cancel":
@@ -2460,6 +2533,31 @@ export default {
           .describe("The Microsoft Azure subscription ID."),
       }),
     },
+    {
+      methods: ["DELETE"],
+      queryParams: z.object({
+        forceDeletionTypes: z
+          .string()
+          .optional()
+          .describe(
+            "The resource types you want to force delete. Currently, only the following is supported: forceDeletionTypes=Microsoft.Compute/virtualMachines,Microsoft.Compute/virtualMachineScaleSets",
+          ),
+        "api-version": z
+          .string()
+          .describe("The API version to use for this operation."),
+      }),
+      routeParams: z.object({
+        resourceGroupName: z
+          .string()
+          .describe(
+            "The name of the resource group to delete. The name is case insensitive.",
+          ),
+        subscriptionId: z
+          .string()
+          .describe("The Microsoft Azure subscription ID."),
+      }),
+      jsonBody: z.object({}),
+    },
   ],
   "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]/exportTemplate":
     [
@@ -2742,6 +2840,35 @@ export default {
             .describe("The Microsoft Azure subscription ID."),
         }),
       },
+      {
+        methods: ["DELETE"],
+        queryParams: z.object({
+          "api-version": z
+            .string()
+            .describe("The API version to use for the operation."),
+        }),
+        routeParams: z.object({
+          resourceGroupName: z
+            .string()
+            .describe(
+              "The name of the resource group that contains the resource to delete. The name is case insensitive.",
+            ),
+          resourceProviderNamespace: z
+            .string()
+            .describe("The namespace of the resource provider."),
+          parentResourcePath: z
+            .string()
+            .describe("The parent resource identity."),
+          resourceType: z.string().describe("The resource type."),
+          resourceName: z
+            .string()
+            .describe("The name of the resource to delete."),
+          subscriptionId: z
+            .string()
+            .describe("The Microsoft Azure subscription ID."),
+        }),
+        jsonBody: z.object({}),
+      },
     ],
   "/[resourceId]": [
     {
@@ -2822,6 +2949,22 @@ export default {
           ),
       }),
     },
+    {
+      methods: ["DELETE"],
+      queryParams: z.object({
+        "api-version": z
+          .string()
+          .describe("The API version to use for the operation."),
+      }),
+      routeParams: z.object({
+        resourceId: z
+          .string()
+          .describe(
+            "The fully qualified ID of the resource, including the resource name and resource type. Use the format, /subscriptions/{guid}/resourceGroups/{resource-group-name}/{resource-provider-namespace}/{resource-type}/{resource-name}",
+          ),
+      }),
+      jsonBody: z.object({}),
+    },
   ],
   "/subscriptions/[subscriptionId]/tagNames/[tagName]/tagValues/[tagValue]": [
     {
@@ -2848,6 +2991,22 @@ export default {
         ),
       ]),
     },
+    {
+      methods: ["DELETE"],
+      queryParams: z.object({
+        "api-version": z
+          .string()
+          .describe("The API version to use for this operation."),
+      }),
+      routeParams: z.object({
+        tagName: z.string().describe("The name of the tag."),
+        tagValue: z.string().describe("The value of the tag to delete."),
+        subscriptionId: z
+          .string()
+          .describe("The Microsoft Azure subscription ID."),
+      }),
+      jsonBody: z.object({}),
+    },
   ],
   "/subscriptions/[subscriptionId]/tagNames/[tagName]": [
     {
@@ -2872,6 +3031,21 @@ export default {
           "Predefined tag name successfully created. Returns information about the predefined tag name.",
         ),
       ]),
+    },
+    {
+      methods: ["DELETE"],
+      queryParams: z.object({
+        "api-version": z
+          .string()
+          .describe("The API version to use for this operation."),
+      }),
+      routeParams: z.object({
+        tagName: z.string().describe("The name of the tag."),
+        subscriptionId: z
+          .string()
+          .describe("The Microsoft Azure subscription ID."),
+      }),
+      jsonBody: z.object({}),
     },
   ],
   "/subscriptions/[subscriptionId]/tagNames": [
@@ -3176,6 +3350,18 @@ export default {
       jsonResponse: tagsResource.describe(
         "Returns tags from the specified object.",
       ),
+    },
+    {
+      methods: ["DELETE"],
+      queryParams: z.object({
+        "api-version": z
+          .string()
+          .describe("The API version to use for this operation."),
+      }),
+      routeParams: z.object({
+        scope: z.string().describe("The resource scope."),
+      }),
+      jsonBody: z.object({}),
     },
   ],
 } as const
