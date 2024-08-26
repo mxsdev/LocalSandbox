@@ -25,7 +25,7 @@ type IdFields<K extends string> = ReturnType<typeof idField<K>>
 const pluralized = <K extends string>(key: K) => `${key}s` as const
 type Pluralized<K extends string> = ReturnType<typeof pluralized<K>>
 
-type AnyModelSchema = z.AnyZodObject | z.ZodEffects<z.AnyZodObject>
+type AnyModelSchema = z.AnyZodObject | z.ZodEffects<z.AnyZodObject> | z.ZodType
 
 type SchemaShape<M extends AnyModelSchema> = M extends z.AnyZodObject
   ? M["shape"]
@@ -36,11 +36,17 @@ type SchemaShape<M extends AnyModelSchema> = M extends z.AnyZodObject
           keyof ReturnType<M["innerType"]>
         >]: z.ZodLiteral<M["_output"][K]>
       } & ReturnType<M["innerType"]>["shape"]
-    : never
+    : {
+        [K in keyof M["_output"]]: z.ZodLiteral<M["_output"][K]>
+      }
 const getModelSchemaKeys = <M extends AnyModelSchema>(
   schema: M,
 ): SchemaShape<M> =>
-  schema instanceof z.ZodObject ? schema.shape : schema.innerType().shape
+  schema instanceof z.ZodObject
+    ? schema.shape
+    : schema instanceof z.ZodEffects
+      ? schema.innerType().shape
+      : {}
 
 type SpecRelationalIds<
   Root extends ModelSpecs<any>,
@@ -377,7 +383,8 @@ class ModelInsertBuilder<
                   const spec = this.root["models"][k]!["spec"]
                   return [
                     idField(k),
-                    getModelSchemaKeys(spec.schema)[spec.primaryKey],
+                    getModelSchemaKeys(spec.schema)[spec.primaryKey] ??
+                      z.string(),
                   ]
                 }) ?? [],
               ),
@@ -536,52 +543,8 @@ export function createIntegration<
   )
 }
 
-// type EdgeSpecRouteMap<GS extends GlobalSpec> = Record<
-//   string,
-//   {
-//     routeFn: EdgeSpecRouteFn
-//     routeSpec: RouteSpec<GetAuthMiddlewaresFromGlobalSpec<GS>>
-//   }[]
-// >
-
-// type ExpandRouteMapMethods<
-//   Routes extends EdgeSpecRouteMap<any>[string],
-//   K extends number = number
-// > = K extends keyof Routes ? Routes[K]["routeSpec"]["methods"][number]
-
-type ExtractCompatibleMethodFromRouteMap<
-  Routes extends { routeSpec: { methods: readonly HTTPMethods[] } }[],
-  Methods extends HTTPMethods,
-> = Routes extends [
-  infer Route extends { routeSpec: { methods: readonly HTTPMethods[] } },
-  ...infer Remaining extends {
-    routeSpec: { methods: readonly HTTPMethods[] }
-  }[],
-]
-  ? [Methods] extends [Route["routeSpec"]["methods"][number]]
-    ? Route
-    : ExtractCompatibleMethodFromRouteMap<Remaining, Methods>
-  : never
-
-// const test_gs = {
-//   authMiddleware: {},
-// } as const satisfies GlobalSpec
-
-// const test_rs_1 = {
-//   methods: ["GET"],
-// } as const satisfies RouteSpec<GetAuthMiddlewaresFromGlobalSpec<typeof test_gs>>
-
-// const test_rs_2 = {
-//   methods: ["POST"],
-// } as const satisfies RouteSpec<GetAuthMiddlewaresFromGlobalSpec<typeof test_gs>>
-
-// type t = ExtractCompatibleMethodFromRouteMap<
-//   [{ routeSpec: typeof test_rs_1 }, { routeSpec: typeof test_rs_2 }],
-//   "GET"
-// >
-
-class UnimplementedError extends EdgeSpecMiddlewareError {
-  constructor(message: string) {
+export class UnimplementedError extends EdgeSpecMiddlewareError {
+  constructor(message = "Not Implemented") {
     super(message, 501)
   }
 }
@@ -591,118 +554,62 @@ const UNIMPLEMENTED_ROUTE: () => Response = () => {
 }
 
 export type IntegrationSpecFromIntegration<
-  I extends IntegrationBuilder<any, any, any>,
+  I extends IntegrationBuilder<any, any>,
 > =
-  I extends IntegrationBuilder<
-    any,
-    infer IS extends IntegrationSpec<any, any>,
-    any
-  >
+  I extends IntegrationBuilder<any, infer IS extends IntegrationSpec<any, any>>
     ? IS
     : never
 
-export type IntegrationStore<I extends IntegrationBuilder<any, any, any>> =
-  Store<IntegrationSpecFromIntegration<I>["models"]>
+export type IntegrationStore<I extends IntegrationBuilder<any, any>> = Store<
+  IntegrationSpecFromIntegration<I>["models"]
+>
 
 export type IntegrationModel<
-  I extends IntegrationBuilder<any, any, any>,
+  I extends IntegrationBuilder<any, any>,
   Model extends keyof IntegrationStore<I>,
 > = IntegrationStore<I>[Model]["_type"]
 
 export class IntegrationBuilder<
   const GS extends GlobalSpec,
   const IS extends IntegrationSpec<any, any>,
-  RouteMap extends EdgeSpecRouteMap<GS> = {},
+  // RouteMap extends EdgeSpecRouteMap<GS> = {},
 > {
   constructor(
     private readonly createWithRouteFn: CreateWithRouteSpecFn<GS>,
-    private readonly routeMap: RouteMap,
+    private routeMap: EdgeSpecRouteMap<GS>,
     private readonly options: {
       cleanup: () => Promise<void>
       readonly integrationSpec: IS
     },
   ) {}
 
-  withRoute<
+  // TODO: support adding multiple routes
+  implementRoute<
     const Route extends string,
     const RS extends RouteSpec<GetAuthMiddlewaresFromGlobalSpec<GS>>,
-  >(url: Route, routeSpec: RS, route?: EdgeSpecRouteFnFromSpecs<GS, RS>) {
-    return new IntegrationBuilder(
-      this.createWithRouteFn,
-      {
-        ...this.routeMap,
-        [url]: [
-          ...(this.routeMap[url] ?? []),
-          {
-            ...(route
-              ? {
-                  routeFn: this.createWithRouteFn(routeSpec)(route),
-                }
-              : {
-                  routeFn: UNIMPLEMENTED_ROUTE,
-                }),
-            routeSpec,
-            unimplemented: true,
-          },
-        ],
-      } as unknown as Omit<RouteMap, Route> & {
-        [key in Route]: [
-          ...(RouteMap[key] extends any[] ? RouteMap[key] : []),
-          {
-            routeFn: EdgeSpecRouteFn
-            routeSpec: RS
-          },
-        ]
-      },
-      this.options,
-    )
-  }
+  >(url: Route, routeSpec: RS, route?: EdgeSpecRouteFnFromSpecs<GS, RS>): this {
+    this.routeMap = {
+      ...this.routeMap,
+      [url]: [
+        ...(this.routeMap[url] ?? []),
+        {
+          ...(route
+            ? {
+                routeFn: this.createWithRouteFn(routeSpec)(route)[0]!.routeFn,
+              }
+            : {
+                routeFn: UNIMPLEMENTED_ROUTE,
+              }),
+          routeSpec,
+          // unimplemented: true,
+        },
+      ],
+    } as EdgeSpecRouteMap<GS>
 
-  implementRoute<
-    const Route extends keyof RouteMap,
-    const Methods extends HTTPMethods[] | HTTPMethods,
-  >(
-    methods: Methods,
-    url: Route,
-    routeFn: EdgeSpecRouteFnFromSpecs<
-      GS,
-      ExtractCompatibleMethodFromRouteMap<
-        RouteMap[Route],
-        Methods extends Array<any> ? Methods[number] : Methods
-      >["routeSpec"]
-    >,
-  ) {
-    const routeMethods = Array.isArray(methods) ? methods : [methods]
-
-    const routes = this.routeMap[url]
-    let existingRoute = routes?.find((route) =>
-      routeMethods.every((m) => route.routeSpec.methods.includes(m)),
-    )
-
-    if (!routes || !existingRoute) {
-      throw new Error("No such route url exists!")
-    }
-
-    if (!("unimplemented" in existingRoute && existingRoute["unimplemented"])) {
-      existingRoute = { ...existingRoute }
-      routes.push(existingRoute)
-    } else {
-      delete existingRoute["unimplemented"]
-    }
-
-    existingRoute.routeFn = this.createWithRouteFn(existingRoute.routeSpec)(
-      routeFn as any,
-    )[0]!.routeFn
+    return this
   }
 
   build() {
-    // const routesMap = Object.fromEntries(
-    //   Object.entries(this.routeMap).map(([route, routes]) => [
-    //     route,
-    //     routes.map(({ routeFn }) => routeFn),
-    //   ]),
-    // )
-
     const edgeSpecRouteBundle: EdgeSpecRouteBundle = {
       routeMatcher: getRouteMatcher(Object.keys(this.routeMap)),
       routeMapWithHandlers: this.routeMap,
@@ -719,41 +626,14 @@ export class IntegrationBuilder<
 
       // include type information for later introspection
       _globalSpec: {} as GS,
-      _routeMap: {} as RouteMap,
     }
   }
 }
 
-export type Integration<
-  GS extends GlobalSpec = any,
-  RouteMap extends EdgeSpecRouteMap<GS> = {},
-> = Awaited<ReturnType<IntegrationBuilder<GS, any, RouteMap>["build"]>>
+export type Integration<GS extends GlobalSpec = any> = Awaited<
+  ReturnType<IntegrationBuilder<GS, any>["build"]>
+>
 
 export interface IntegrationConfig {}
 
 export type IntegrationFactory = (config: IntegrationConfig) => Integration
-
-// const modelSpecs = createModelSpecs({
-//   user: {
-//     primaryKey: "id",
-//     schema: z.object({
-//       id: z.string(),
-//     }),
-//     hasOne: ["subscription"],
-//   },
-//   subscription: {
-//     primaryKey: "subscriptionId",
-//     schema: z.object({
-//       authorizationSource: z.string(),
-//       subscriptionId: z.string(),
-//       displayName: z.string(),
-//       state: z.string(),
-//     }),
-//     hasOne: ["user"],
-//   },
-// })
-
-// type MS = typeof modelSpecs
-// type Spec = MS["user"]
-
-// type t = SpecWithRelationalJoin<MS, Spec>

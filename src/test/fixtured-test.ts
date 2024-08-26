@@ -5,7 +5,6 @@ import { ServiceBusManagementClient } from "@azure/arm-servicebus"
 import { SubscriptionClient } from "@azure/arm-subscriptions"
 import type { ServiceClientOptions } from "@azure/core-client"
 import { LocalSandboxAzureCredential } from "../lib/service-client/local-sandbox-azure-credential.js"
-import { TokenCredential } from "@azure/core-auth"
 import { ResourceManagementClient } from "@azure/arm-resources"
 
 const getAzureContext = () => {

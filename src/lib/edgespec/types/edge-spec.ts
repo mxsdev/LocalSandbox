@@ -144,6 +144,7 @@ export function makeRequestAgainstEdgeSpec(
         for (const route of routes.filter((v) =>
           v.routeSpec.methods.includes(req.method as HTTPMethods),
         )) {
+          console.log(route)
           try {
             return await route.routeFn(req, ctx)
           } catch (e) {
