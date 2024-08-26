@@ -36,68 +36,12 @@ async function maybePretty(
   }
 }
 
-const autocorrectRef = (ref: string) =>
-  ref[1] === "/" ? ref : "#/" + ref.slice(1)
-
-const getRefParts = (originalRef: string) => {
-  // #components -> #/components
-  // const correctRef = autocorrectRef(originalRef)
-
-  // console.log({ correctRef, originalRef })
-
-  const [filePath, ref] = z
-    .tuple([z.string(), z.string()])
-    .parse(originalRef.split("#"))
-
-  const split = ref.split("/")
-
-  // "#/components/schemas/Something.jsonld" -> #/components/schemas
-  const refPath = split.slice(1, -1).join("/")!
-  const refItem = split[split.length - 1]!
-
-  return {
-    refPath,
-    refItem,
-    filePath,
-  }
-}
-
-const parseSwagger = async (filePath: string) =>
-  (await SwaggerParser.parse(filePath)) as Spec
-
-const getRef = async (
-  root: string,
-  ref: string,
-  doc: any,
-  curr: string[],
-): Promise<any> => {
-  const { refPath, refItem, filePath } = getRefParts(ref)
-
-  if (!refItem) {
-    throw new Error("failed to parse ref item for ref " + ref)
-  }
-
-  if (filePath) {
-    doc = await parseSwagger(path.join(root, filePath))
-  }
-
-  if (refPath) {
-    curr = refPath.split("/").filter(Boolean)
-  }
-
-  console.log({ refPath, refItem, filePath, ref })
-
-  for (let i = 0; i < curr.length; i++) {
-    doc = doc[curr[i] as any]
-  }
-
-  return doc[refItem]
-}
-
 const main = async () => {
   const { convertedFiles } = await convertAPISchemaToZod(
-    // "../azure-rest-api-specs/specification/compute/resource-manager/Microsoft.Compute/ComputeRP/stable/2025-07-01/virtualMachine.json",
-    "../azure-rest-api-specs/specification/resources/resource-manager/Microsoft.Resources/stable/2016-06-01/subscriptions.json",
+    [
+      "../azure-rest-api-specs/specification/resources/resource-manager/Microsoft.Resources/stable/2016-06-01/subscriptions.json",
+      "../azure-rest-api-specs/specification/resources/resource-manager/Microsoft.Resources/stable/2024-07-01/resources.json",
+    ],
     "../azure-rest-api-specs/specification",
   )
 

@@ -351,11 +351,9 @@ export default {
             .string()
             .describe("The ID of the target subscription."),
         }),
-        jsonBody: z.object({
-          parameters: checkZonePeersRequest.describe(
-            "Parameters for checking zone peers.",
-          ),
-        }),
+        jsonBody: checkZonePeersRequest.describe(
+          "Parameters for checking zone peers.",
+        ),
         jsonResponse: checkZonePeersResult.describe(
           "OK - Returns information about the logical availability zone mapping between subscriptions.",
         ),
@@ -370,11 +368,9 @@ export default {
           .describe("The API version to use for the operation."),
       }),
       routeParams: z.object({}),
-      jsonBody: z.object({
-        "Resource Name Definition": resourceName.describe(
-          "Resource object with values for resource name and resource type",
-        ),
-      }),
+      jsonBody: resourceName.describe(
+        "Resource object with values for resource name and resource type",
+      ),
       jsonResponse: checkResourceNameResult.describe(
         "OK - Returns status as allowed or not.",
       ),

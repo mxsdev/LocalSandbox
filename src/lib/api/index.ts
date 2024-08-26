@@ -19,7 +19,7 @@ const routeLoggingMiddleware: Middleware = async (req, ctx, next) => {
   })
 
   logger.debug(
-    { url: req.url, method: req.method, headers: [...req.headers.entries()] },
+    { url: req.url, method: req.method, body: await req.clone().text() },
     "Got API Request",
   )
 

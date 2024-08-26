@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { randomUUID } from "node:crypto"
 import {
   createIntegration,
   createModelSpecs,
@@ -9,8 +10,11 @@ import {
 import subscriptionRoutes, {
   subscription,
 } from "../../../../output/resources/resource-manager/Microsoft.Resources/stable/2016-06-01/subscriptions.js"
+import resourceRoutes from "../../../../output/resources/resource-manager/Microsoft.Resources/stable/2024-07-01/resources.js"
 import { Middleware } from "edgespec"
 import { bearerToken } from "../../util/bearer-token.js"
+import { resourceGroup } from "../../../../output/resources/resource-manager/Microsoft.Resources/stable/2024-07-01/resources.js"
+import { NotFoundError } from "edgespec/middleware/http-exceptions.js"
 
 export const DEFAULT_SUBSCRIPTION_DISPLAY_NAME =
   "LocalSandbox Test Subscription"
@@ -29,6 +33,8 @@ export const createAzureIntegration: IntegrationFactory = () => {
     const subscription_id = bearerToken.safeParse(
       req.headers.get("Authorization"),
     ).data
+
+    // TODO: make sure req.routeParams.subscriptionId === subscription_id
 
     if (!subscription_id) {
       return new Response("Unauthorized", { status: 401 })
@@ -57,13 +63,9 @@ export const createAzureIntegration: IntegrationFactory = () => {
       passErrors: true,
     },
     models: createModelSpecs({
-      user: {
-        primaryKey: "id",
-        schema: z.object({
-          id: z.string(),
-        }),
-        // hasOne: ["subscription"],
-      },
+      // resource_group: {
+      //   schema: resourceGroup
+      // },
       subscription: {
         primaryKey: "subscriptionId",
         schema: subscription
@@ -79,8 +81,44 @@ export const createAzureIntegration: IntegrationFactory = () => {
             id: v.id ?? `/subscriptions/${v.subscriptionId}`,
           })),
       },
+      resource_group: {
+        primaryKey: "id",
+        schema: resourceGroup
+          .omit({ id: true })
+          .extend({ id: resourceGroup.shape.id })
+          .transform((v) => ({
+            ...v,
+            id: v.id ?? randomUUID(),
+          })),
+        hasOne: ["subscription"],
+      },
     }),
-  }).withRoute("/subscriptions", subscriptionRoutes["/subscriptions"][0])
+  })
+    .withRoute("/subscriptions", subscriptionRoutes["/subscriptions"][0])
+    .withRoute(
+      "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+      resourceRoutes[
+        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]"
+      ][0],
+    )
+    .withRoute(
+      "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+      resourceRoutes[
+        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]"
+      ][1],
+    )
+    .withRoute(
+      "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+      resourceRoutes[
+        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]"
+      ][2],
+    )
+    .withRoute(
+      "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+      resourceRoutes[
+        "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]"
+      ][3],
+    )
 
   integration.implementRoute("GET", "/subscriptions", async (_, ctx) => {
     return ctx.json({
@@ -89,6 +127,112 @@ export const createAzureIntegration: IntegrationFactory = () => {
       nextLink: "",
     })
   })
+
+  integration.implementRoute(
+    "PUT",
+    "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+    async (req, ctx) => {
+      const parameters = req.jsonBody
+
+      if (
+        parameters.name &&
+        parameters.name !== req.routeParams.resourceGroupName
+      ) {
+        // TODO: make this the same as prod...
+        throw new Error("Invalid name")
+      }
+
+      const resourceGroup = ctx.store.resource_group
+        .insert()
+        .values({
+          ...parameters,
+          // TODO: support unique indexes
+          name: parameters.name ?? req.routeParams.resourceGroupName,
+          subscription_id: ctx.subscription.subscriptionId,
+        })
+        .onAllConflictMerge()
+        .executeTakeFirstOrThrow()
+
+      return ctx.json(resourceGroup)
+    },
+  )
+
+  // integration.implementRoute(
+  //   "PATCH",
+  //   "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+  //   async (req, ctx) => {
+  //     const parameters = req.jsonBody
+
+  //     if (
+  //       parameters.name &&
+  //       parameters.name !== req.routeParams.resourceGroupName
+  //     ) {
+  //       // TODO: make this the same as prod...
+  //       throw new Error("Invalid name")
+  //     }
+
+  //     const resourceGroup = ctx.store.resource_group
+  //       .insert()
+  //       .values({
+  //         ...parameters,
+  //         // TODO: support unique indexes
+  //         name: parameters.name ?? req.routeParams.resourceGroupName,
+  //         subscription_id: ctx.subscription.subscriptionId,
+  //       })
+  //       .onAllConflictMerge()
+  //       .executeTakeFirstOrThrow()
+
+  //     return ctx.json(resourceGroup)
+  //   },
+  // )
+
+  integration.implementRoute(
+    "GET",
+    "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+    async (req, ctx) => {
+      const subscription = ctx.store.resource_group
+        .select()
+        .where(
+          (rg) =>
+            ctx.subscription.subscriptionId ===
+            rg.subscription().subscriptionId,
+        )
+        .where(
+          (rg) =>
+            rg.subscription().subscriptionId === req.routeParams.subscriptionId,
+        )
+        .where((rg) => rg.name === req.routeParams.resourceGroupName)
+        .executeTakeFirstOrThrow(
+          () => new NotFoundError("Could not find subscription"),
+        )
+
+      return ctx.json(subscription)
+    },
+  )
+
+  integration.implementRoute(
+    "HEAD",
+    "/subscriptions/[subscriptionId]/resourcegroups/[resourceGroupName]",
+    async (req, ctx) => {
+      ctx.store.resource_group
+        .select()
+        .where(
+          (rg) =>
+            ctx.subscription.subscriptionId ===
+            rg.subscription().subscriptionId,
+        )
+        .where(
+          (rg) =>
+            rg.subscription().subscriptionId === req.routeParams.subscriptionId,
+        )
+        .where((rg) => rg.name === req.routeParams.resourceGroupName)
+        .executeTakeFirstOrThrow(
+          () => new NotFoundError("Could not find subscription"),
+        )
+
+      return new Response(null, { status: 204 })
+    },
+  )
 
   return integration.build()
 }

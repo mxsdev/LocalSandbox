@@ -14,6 +14,10 @@ import {
   EdgeSpecRouteMap,
 } from "edgespec"
 import { getRouteMatcher } from "next-route-matcher"
+import {
+  EdgeSpecMiddlewareError,
+  NotFoundError,
+} from "edgespec/middleware/http-exceptions.js"
 
 const idField = <K extends string>(key: K) => `${key}_id` as const
 type IdFields<K extends string> = ReturnType<typeof idField<K>>
@@ -31,12 +35,12 @@ type SchemaShape<M extends AnyModelSchema> = M extends z.AnyZodObject
           keyof M["_output"],
           keyof ReturnType<M["innerType"]>
         >]: z.ZodLiteral<M["_output"][K]>
-      } & ReturnType<M["innerType"]>
+      } & ReturnType<M["innerType"]>["shape"]
     : never
 const getModelSchemaKeys = <M extends AnyModelSchema>(
   schema: M,
 ): SchemaShape<M> =>
-  schema instanceof z.ZodObject ? schema.shape : schema.innerType()
+  schema instanceof z.ZodObject ? schema.shape : schema.innerType().shape
 
 type SpecRelationalIds<
   Root extends ModelSpecs<any>,
@@ -79,6 +83,12 @@ type SpecRelationalJoin<
     ModelName
   > as Pluralized<K>]: () => SpecWithRelationalJoin<Root, Root[K], K>[]
 }
+
+type SpecWhereCheck<
+  Root extends ModelSpecs<any>,
+  Spec extends ModelSpec<any, keyof Root>,
+  ModelName extends keyof Root & string,
+> = SpecWithRelationalJoin<Root, Spec, ModelName>
 
 type SpecWithRelationalId<
   Root extends ModelSpecs<any>,
@@ -215,28 +225,36 @@ class ModelSelectBuilder<
   ModelName extends keyof Root & string,
   Output = SpecWithRelationalJoin<Root, Spec, ModelName>,
 > {
-  whereRules: ((val: z.output<Spec["schema"]>) => boolean)[] = []
+  whereRules: ((val: SpecWhereCheck<Root, Spec, ModelName>) => boolean)[] = []
 
-  constructor(private root: Model<any, Spec, any>) {}
+  constructor(private root: Model<Root, Spec, any>) {}
 
-  where<F extends z.output<Spec["schema"]>>(
-    predicate: (val: z.output<Spec["schema"]>) => val is F,
+  where<F extends SpecWhereCheck<Root, Spec, ModelName>>(
+    predicate: (val: SpecWhereCheck<Root, Spec, ModelName>) => val is F,
   ): ModelSelectBuilder<Root, Spec, ModelName, Output & F>
-  where(predicate: (val: z.output<Spec["schema"]>) => boolean): this
-  where(predicate: (val: z.output<Spec["schema"]>) => boolean): this {
+  where(
+    predicate: (val: SpecWhereCheck<Root, Spec, ModelName>) => boolean,
+  ): this
+  where(
+    predicate: (val: SpecWhereCheck<Root, Spec, ModelName>) => boolean,
+  ): this {
     this.whereRules.push(predicate)
     return this
   }
 
   execute(): Output[] {
     return Object.values(this.root["store"]).filter((val): val is Output =>
-      this.whereRules.every((rule) => rule(val as z.output<Spec["schema"]>)),
+      this.whereRules.every((rule) =>
+        rule(val as SpecWhereCheck<Root, Spec, ModelName>),
+      ),
     )
   }
 
   executeTakeFirst(): Output | undefined {
     return Object.values(this.root["store"]).find((val): val is Output =>
-      this.whereRules.every((rule) => rule(val as z.output<Spec["schema"]>)),
+      this.whereRules.every((rule) =>
+        rule(val as SpecWhereCheck<Root, Spec, ModelName>),
+      ),
     )
   }
 
@@ -498,10 +516,15 @@ type ExtractCompatibleMethodFromRouteMap<
 //   "GET"
 // >
 
-const UNIMPLEMENTED_ROUTE: () => Response = () =>
-  new Response("Not Implemented", {
-    status: 501,
-  })
+class UnimplementedError extends EdgeSpecMiddlewareError {
+  constructor(message: string) {
+    super(message, 501)
+  }
+}
+
+const UNIMPLEMENTED_ROUTE: () => Response = () => {
+  throw new UnimplementedError("Not Implemented")
+}
 
 export type IntegrationSpecFromIntegration<
   I extends IntegrationBuilder<any, any, any>,
@@ -599,6 +622,8 @@ export class IntegrationBuilder<
     if (!("unimplemented" in existingRoute && existingRoute["unimplemented"])) {
       existingRoute = { ...existingRoute }
       routes.push(existingRoute)
+    } else {
+      delete existingRoute["unimplemented"]
     }
 
     existingRoute.routeFn = this.createWithRouteFn(existingRoute.routeSpec)(

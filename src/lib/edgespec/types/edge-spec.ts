@@ -4,6 +4,7 @@ import {
   type EdgeSpecRouteFn,
   type EdgeSpecRouteParams,
   EdgeSpecRequest,
+  HTTPMethods,
 } from "./web-handler.js"
 
 import type { ReadonlyDeep } from "type-fest"
@@ -12,6 +13,7 @@ import { getDefaultContext } from "./context.js"
 import { Server } from "node:http"
 import type { RouteSpec } from "./route-spec.js"
 import {
+  EdgeSpecMiddlewareError,
   InputValidationError,
   MethodNotAllowedError,
 } from "edgespec/middleware/http-exceptions.js"
@@ -136,16 +138,20 @@ export function makeRequestAgainstEdgeSpec(
 
     return wrapMiddlewares(
       options.middleware ?? [],
-      async (req, ctx) => {
+      async (req: EdgeSpecRequest, ctx) => {
         let last_error: Error | undefined = undefined
 
-        for (const route of routes) {
+        for (const route of routes.filter((v) =>
+          v.routeSpec.methods.includes(req.method as HTTPMethods),
+        )) {
           try {
             return await route.routeFn(req, ctx)
           } catch (e) {
             if (
               e instanceof InputValidationError ||
-              e instanceof MethodNotAllowedError
+              e instanceof MethodNotAllowedError ||
+              // fall through on "unimplemented" errors
+              (e instanceof EdgeSpecMiddlewareError && e.status === 501)
             ) {
               last_error = e
               continue

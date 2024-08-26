@@ -6,7 +6,8 @@
   "main": "index.js",
   "scripts": {
     "test": "vitest",
-    "dev": "tsx --watch ./src/entrypoint/index.ts"
+    "dev": "tsx --watch ./src/entrypoint/index.ts",
+    "generate:azure": "tsx ./scripts/generate-azure-schema.ts"
   },
   "keywords": [],
   "author": "",
@@ -34,6 +35,7 @@
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",
+    "@azure/arm-resources": "^5.2.0",
     "@azure/core-auth": "^1.7.2",
     "@azure/core-client": "^1.9.2",
     "@liuli-util/fs-extra": "^0.1.0",
