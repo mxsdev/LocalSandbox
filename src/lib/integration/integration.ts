@@ -21,13 +21,30 @@ type IdFields<K extends string> = ReturnType<typeof idField<K>>
 const pluralized = <K extends string>(key: K) => `${key}s` as const
 type Pluralized<K extends string> = ReturnType<typeof pluralized<K>>
 
+type AnyModelSchema = z.AnyZodObject | z.ZodEffects<z.AnyZodObject>
+
+type SchemaShape<M extends AnyModelSchema> = M extends z.AnyZodObject
+  ? M["shape"]
+  : M extends z.ZodEffects<z.AnyZodObject>
+    ? {
+        [K in Exclude<
+          keyof M["_output"],
+          keyof ReturnType<M["innerType"]>
+        >]: z.ZodLiteral<M["_output"][K]>
+      } & ReturnType<M["innerType"]>
+    : never
+const getModelSchemaKeys = <M extends AnyModelSchema>(
+  schema: M,
+): SchemaShape<M> =>
+  schema instanceof z.ZodObject ? schema.shape : schema.innerType()
+
 type SpecRelationalIds<
   Root extends ModelSpecs<any>,
   Spec extends ModelSpec<any, keyof Root>,
 > = Spec["hasOne"] extends (keyof Root & string)[]
   ? {
       [K in Spec["hasOne"][number] as IdFields<K>]: z.output<
-        Root[K]["schema"]["shape"][Root[K]["primaryKey"]]
+        SchemaShape<Root[K]["schema"]>[Root[K]["primaryKey"]]
       >
     }
   : {}
@@ -79,8 +96,8 @@ type SpecWithRelationalJoin<
   ModelName extends keyof Root & string,
 > = z.output<Spec["schema"]> & SpecRelationalJoin<Root, Spec, ModelName>
 
-type ModelSpec<Schema extends z.AnyZodObject, ModelKeys> = {
-  primaryKey: keyof Schema["shape"]
+type ModelSpec<Schema extends AnyModelSchema, ModelKeys> = {
+  primaryKey: keyof SchemaShape<Schema>
   schema: Schema
 
   hasOne?: ModelKeys[]
@@ -102,13 +119,15 @@ class Model<
     protected modelName: ModelName,
   ) {}
 
+  _type!: SpecWithRelationalJoin<Root, Spec, ModelName>
+
   protected _store: Record<
-    z.output<Spec["schema"]["shape"][Spec["primaryKey"]]>,
+    z.output<SchemaShape<Spec["schema"]>[Spec["primaryKey"]]>,
     SpecWithRelationalId<Root, Spec>
   > = {} as any
 
   protected get store(): Record<
-    z.output<Spec["schema"]["shape"][Spec["primaryKey"]]>,
+    z.output<SchemaShape<Spec["schema"]>[Spec["primaryKey"]]>,
     SpecWithRelationalJoin<Root, Spec, ModelName>
   > {
     const res = Object.fromEntries(
@@ -160,13 +179,13 @@ class Model<
   }
 
   get(
-    primaryKey: z.output<Spec["schema"]["shape"][Spec["primaryKey"]]>,
+    primaryKey: z.output<SchemaShape<Spec["schema"]>[Spec["primaryKey"]]>,
   ): SpecWithRelationalJoin<Root, Spec, ModelName> | undefined {
     return this.store[primaryKey]
   }
 
   getOrThrow(
-    primaryKey: z.output<Spec["schema"]["shape"][Spec["primaryKey"]]>,
+    primaryKey: z.output<SchemaShape<Spec["schema"]>[Spec["primaryKey"]]>,
     err?: LazyError,
   ): SpecWithRelationalJoin<Root, Spec, ModelName> {
     const res = this.get(primaryKey)
@@ -241,6 +260,8 @@ class ModelInsertBuilder<
 > {
   changes: SpecWithRelationalId<Root, Spec>[] = []
 
+  on_conflict: "mergeall" | "donothing" | undefined
+
   constructor(private root: Model<Root, Spec, any>) {}
 
   get spec() {
@@ -266,13 +287,18 @@ class ModelInsertBuilder<
     const vals_array = Array.isArray(vals) ? vals : [vals]
     this.changes.push(
       ...vals_array.map((val) =>
-        this.spec.schema
-          .extend(
-            Object.fromEntries(
-              this.spec.hasOne?.map((k) => {
-                const spec = this.root["models"][k]!["spec"]
-                return [idField(k), spec.schema.shape[spec.primaryKey]]
-              }) ?? [],
+        (this.spec.schema as z.ZodAny)
+          .and(
+            z.object(
+              Object.fromEntries(
+                this.spec.hasOne?.map((k) => {
+                  const spec = this.root["models"][k]!["spec"]
+                  return [
+                    idField(k),
+                    getModelSchemaKeys(spec.schema)[spec.primaryKey],
+                  ]
+                }) ?? [],
+              ),
             ),
           )
           .parse(val),
@@ -281,14 +307,35 @@ class ModelInsertBuilder<
     return this
   }
 
+  onAllConflictMerge = (): this => {
+    this.on_conflict = "mergeall"
+
+    return this
+  }
+
+  onAllConflictDoNothing = (): this => {
+    this.on_conflict = "donothing"
+
+    return this
+  }
+
   execute() {
     for (const change of this.changes) {
       if (this.root["_store"][change[this.primaryKey]]) {
-        // TODO: improve error
-        throw new Error("Duplicate primary key!")
+        if (this.on_conflict === "mergeall") {
+          this.root["_store"][change[this.primaryKey]] = {
+            ...this.root["_store"][change[this.primaryKey]],
+            ...change,
+          }
+        } else if (this.on_conflict === "donothing") {
+          // do nothing...
+        } else {
+          // TODO: improve error
+          throw new Error("Duplicate primary key!")
+        }
+      } else {
+        this.root["_store"][change[this.primaryKey]] = change
       }
-
-      this.root["_store"][change[this.primaryKey]] = change
     }
 
     return this.changes.map((c) => this.store[c[this.primaryKey]])
@@ -313,7 +360,7 @@ class ModelInsertBuilder<
 }
 
 // export function createModelSpec<
-//   const Schema extends z.AnyZodObject,
+//   const Schema extends AnyModelSchema,
 //   const MS extends ModelSpecs<MS>,
 // >(spec: ModelSpec<Schema, MS>): ModelSpec<Schema, MS> {
 //   return spec
@@ -322,9 +369,9 @@ class ModelInsertBuilder<
 export function createModelSpecs<
   const SpecMap extends {
     [K in keyof SpecMap]: ModelSpec<
-      SpecMap[K]["schema"] extends z.AnyZodObject
+      SpecMap[K]["schema"] extends AnyModelSchema
         ? SpecMap[K]["schema"]
-        : z.AnyZodObject,
+        : AnyModelSchema,
       keyof SpecMap
     >
   },
@@ -334,7 +381,7 @@ export function createModelSpecs<
 
 type ModelSpecs<K extends string | number | symbol> = Record<
   K,
-  ModelSpec<z.AnyZodObject, K>
+  ModelSpec<AnyModelSchema, K>
 >
 
 type Store<MS extends ModelSpecs<any>> = {
@@ -370,35 +417,6 @@ export function createIntegration<
 
   const models = getStore(modelSpecs)
 
-  // type KyselyDB = ZodModelSpecToKyselyDB<MS>
-
-  // const db = new SQL.Database()
-
-  // const kysely = new Kysely<KyselyDB>({
-  //   dialect: new SqlJsDialect({
-  //     sqlJs: db,
-  //   }),
-  // })
-
-  // // generate table creation schemata
-  // const tables = Object.entries(models)
-  //   .map(([name, { schema, primaryKey }]) => {
-  //     return `CREATE TABLE IF NOT EXISTS ${name} (${Object.entries(schema.shape)
-  //       .map(([colName, colSchema]) => {
-  //         return `${colName} ${zodToSQL(colSchema as z.ZodTypeAny)} ${
-  //           colName === primaryKey ? "PRIMARY KEY" : ""
-  //         }`
-  //       })
-  //       .join(",")});`
-  //   })
-  //   .join("")
-
-  // db.exec(tables)
-
-  // const kysely = createDenoSqliteKysely<KyselyDB>({
-  //   database: db,
-  // })
-
   const storeMiddleware: Middleware<{}, { store: Store<MS> }> = async (
     req,
     ctx,
@@ -431,6 +449,7 @@ export function createIntegration<
       cleanup: async () => {
         // db.close()
       },
+      integrationSpec,
     },
   )
 }
@@ -484,8 +503,28 @@ const UNIMPLEMENTED_ROUTE: () => Response = () =>
     status: 501,
   })
 
+export type IntegrationSpecFromIntegration<
+  I extends IntegrationBuilder<any, any, any>,
+> =
+  I extends IntegrationBuilder<
+    any,
+    infer IS extends IntegrationSpec<any, any>,
+    any
+  >
+    ? IS
+    : never
+
+export type IntegrationStore<I extends IntegrationBuilder<any, any, any>> =
+  Store<IntegrationSpecFromIntegration<I>["models"]>
+
+export type IntegrationModel<
+  I extends IntegrationBuilder<any, any, any>,
+  Model extends keyof IntegrationStore<I>,
+> = IntegrationStore<I>[Model]["_type"]
+
 export class IntegrationBuilder<
   const GS extends GlobalSpec,
+  const IS extends IntegrationSpec<any, any>,
   RouteMap extends EdgeSpecRouteMap<GS> = {},
 > {
   constructor(
@@ -493,6 +532,7 @@ export class IntegrationBuilder<
     private readonly routeMap: RouteMap,
     private readonly options: {
       cleanup: () => Promise<void>
+      readonly integrationSpec: IS
     },
   ) {}
 
@@ -598,13 +638,11 @@ export class IntegrationBuilder<
 export type Integration<
   GS extends GlobalSpec = any,
   RouteMap extends EdgeSpecRouteMap<GS> = {},
-> = Awaited<ReturnType<IntegrationBuilder<GS, RouteMap>["build"]>>
+> = Awaited<ReturnType<IntegrationBuilder<GS, any, RouteMap>["build"]>>
 
 export interface IntegrationConfig {}
 
-export type IntegrationFactory = (
-  config: IntegrationConfig,
-) => Promise<Integration> | Integration
+export type IntegrationFactory = (config: IntegrationConfig) => Integration
 
 // const modelSpecs = createModelSpecs({
 //   user: {

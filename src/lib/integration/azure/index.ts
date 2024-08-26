@@ -3,20 +3,57 @@ import {
   createIntegration,
   createModelSpecs,
   IntegrationFactory,
+  IntegrationModel,
+  IntegrationStore,
 } from "../integration.js"
-import vmRoutes, {
-  virtualMachine,
-} from "../../../../output/compute/resource-manager/Microsoft.Compute/ComputeRP/stable/2024-07-01/virtualMachine.js"
 import subscriptionRoutes, {
   subscription,
 } from "../../../../output/resources/resource-manager/Microsoft.Resources/stable/2016-06-01/subscriptions.js"
+import { Middleware } from "edgespec"
+import { bearerToken } from "../../util/bearer-token.js"
 
-export const azure_integration: IntegrationFactory = () => {
-  let ct = 0
+export const DEFAULT_SUBSCRIPTION_DISPLAY_NAME =
+  "LocalSandbox Test Subscription"
+export const DEFAULT_SUBSCRIPTION_AUTHORIZATION_SOURCE =
+  "https://localsandbox.io"
+
+export const createAzureIntegration: IntegrationFactory = () => {
+  const bearerAuthMiddleware: Middleware<
+    {
+      store: IntegrationStore<typeof integration>
+    },
+    {
+      subscription: IntegrationModel<typeof integration, "subscription">
+    }
+  > = async (req, ctx, next) => {
+    const subscription_id = bearerToken.safeParse(
+      req.headers.get("Authorization"),
+    ).data
+
+    if (!subscription_id) {
+      return new Response("Unauthorized", { status: 401 })
+    }
+
+    const subscription = ctx.store.subscription
+      .insert()
+      .values({
+        subscriptionId: subscription_id,
+        displayName: DEFAULT_SUBSCRIPTION_DISPLAY_NAME,
+        authorizationSource: DEFAULT_SUBSCRIPTION_AUTHORIZATION_SOURCE,
+        state: "Enabled",
+      })
+      .onAllConflictDoNothing()
+      .executeTakeFirstOrThrow()
+
+    ctx.subscription = subscription
+
+    return await next(req, ctx)
+  }
 
   const integration = createIntegration({
     globalSpec: {
       authMiddleware: {},
+      afterAuthMiddleware: [bearerAuthMiddleware],
       passErrors: true,
     },
     models: createModelSpecs({
@@ -30,63 +67,27 @@ export const azure_integration: IntegrationFactory = () => {
       subscription: {
         primaryKey: "subscriptionId",
         schema: subscription
-          .pick({
-            authorizationSource: true,
-            subscriptionId: true,
-            displayName: true,
-            state: true,
-          })
-          .required(),
+          .omit({ id: true, subscriptionPolicies: true })
+          .required()
+          .extend(
+            subscription
+              .pick({ id: true, subscriptionPolicies: true })
+              .partial().shape,
+          )
+          .transform((v) => ({
+            ...v,
+            id: v.id ?? `/subscriptions/${v.subscriptionId}`,
+          })),
       },
     }),
-  })
-    .withRoute("/hello", {
-      methods: ["GET"],
-      jsonResponse: z.object({
-        message: z.string(),
-      }),
-    })
-    .withRoute("/hello", {
-      methods: ["POST"],
-      jsonResponse: z.object({
-        ok: z.boolean(),
-      }),
-    })
-    .withRoute("/subscriptions", subscriptionRoutes["/subscriptions"][0])
+  }).withRoute("/subscriptions", subscriptionRoutes["/subscriptions"][0])
 
-  integration.implementRoute("GET", "/subscriptions", async (req, ctx) => {
-    // TODO: filter based on auth
-    const subscriptions = ctx.store.subscription.select().execute()
-
-    // ctx.kysely.selectFrom("subscription")
-
+  integration.implementRoute("GET", "/subscriptions", async (_, ctx) => {
     return ctx.json({
-      value: subscriptions,
+      value: [ctx.subscription],
+      // TODO: maybe don't do this??
       nextLink: "",
     })
-
-    // return new Response("Unimplemented", { status: 501 })
-  })
-
-  integration.implementRoute("GET", "/hello", async (_, ctx) => {
-    return ctx.json({
-      message: `hi! users: ${ctx.store.user
-        .select()
-        .execute()
-        .map((u) => u.id)
-        .join(", ")}`,
-    })
-  })
-
-  integration.implementRoute("POST", "/hello", async (_, ctx) => {
-    ctx.store.user
-      .insert()
-      .values({
-        id: `user-${++ct}`,
-      })
-      .execute()
-
-    return ctx.json({ ok: true })
   })
 
   return integration.build()
