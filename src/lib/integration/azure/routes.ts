@@ -10,6 +10,11 @@ import { Middleware } from "edgespec"
 import { bearerToken } from "../../util/bearer-token.js"
 import { resourceGroup } from "../../../../output/resources/resource-manager/Microsoft.Resources/stable/2024-07-01/resources.js"
 import { sbNamespace } from "../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/namespace-preview.js"
+import {
+  sbQueue,
+  sbQueueProperties,
+} from "../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/Queue.js"
+import { z } from "zod"
 
 export const DEFAULT_SUBSCRIPTION_DISPLAY_NAME =
   "LocalSandbox Test Subscription"
@@ -88,6 +93,29 @@ export const azure_routes = createIntegration({
         ...v,
         id: v.id ?? randomUUID(),
       })),
+      hasOne: ["resource_group"],
+    },
+    sb_queue: {
+      primaryKey: "id",
+      schema: sbQueue
+        .and(
+          z.object({
+            properties: sbQueueProperties
+              .omit({
+                maxDeliveryCount: true,
+              })
+              .extend({
+                maxDeliveryCount:
+                  sbQueueProperties.shape.maxDeliveryCount.default(10),
+              })
+              .default({}),
+          }),
+        )
+        .transform((v) => ({
+          ...v,
+          id: v.id ?? randomUUID(),
+        })),
+      hasOne: ["sb_namespace"],
     },
   }),
 })

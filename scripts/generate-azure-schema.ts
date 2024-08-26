@@ -42,6 +42,7 @@ const main = async () => {
       "../azure-rest-api-specs/specification/resources/resource-manager/Microsoft.Resources/stable/2016-06-01/subscriptions.json",
       "../azure-rest-api-specs/specification/resources/resource-manager/Microsoft.Resources/stable/2024-07-01/resources.json",
       "../azure-rest-api-specs/specification/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/namespace-preview.json",
+      "../azure-rest-api-specs/specification/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/Queue.json",
     ],
     "../azure-rest-api-specs/specification",
   )

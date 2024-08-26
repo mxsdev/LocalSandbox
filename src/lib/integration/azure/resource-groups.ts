@@ -77,7 +77,7 @@ azure_routes.implementRoute(
     "GET",
   ),
   async (req, ctx) => {
-    const subscription = ctx.store.resource_group
+    const resource_group = ctx.store.resource_group
       .select()
       .where(
         (rg) =>
@@ -89,10 +89,10 @@ azure_routes.implementRoute(
       )
       .where((rg) => rg.name === req.routeParams.resourceGroupName)
       .executeTakeFirstOrThrow(
-        () => new NotFoundError("Could not find subscription"),
+        () => new NotFoundError("Could not find resource group"),
       )
 
-    return ctx.json(subscription)
+    return ctx.json(resource_group)
   },
 )
 

@@ -1,4 +1,5 @@
 import z from "zod"
+import { Mutex } from "async-mutex"
 import {
   type CreateWithRouteSpecFn,
   type EdgeSpecRouteBundle,
@@ -135,6 +136,8 @@ class Model<
     protected modelName: ModelName,
   ) {}
 
+  protected mutex = new Mutex()
+
   _type!: SpecWithRelationalJoin<Root, Spec, ModelName>
 
   protected _store: Record<
@@ -239,6 +242,10 @@ class ModelSelectBuilder<
   ModelName extends keyof Root & string,
   Output = SpecWithRelationalJoin<Root, Spec, ModelName>,
 > {
+  private get mutex() {
+    return this.root["mutex"]
+  }
+
   whereRules: ((val: SpecWhereCheck<Root, Spec, ModelName>) => boolean)[] = []
 
   constructor(private root: Model<Root, Spec, any>) {}
@@ -383,7 +390,7 @@ class ModelInsertBuilder<
                   const spec = this.root["models"][k]!["spec"]
                   return [
                     idField(k),
-                    getModelSchemaKeys(spec.schema)[spec.primaryKey] ??
+                    getModelSchemaKeys(spec.schema)?.[spec.primaryKey] ??
                       z.string(),
                   ]
                 }) ?? [],
