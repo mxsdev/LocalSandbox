@@ -114,6 +114,8 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
         )
 
         delete consumer.current_delivery
+
+        this.tryFlush()
       },
       [SenderEvents.modified]: (e: { delivery: Delivery }) => {
         const undeliverable_here =
@@ -156,6 +158,8 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
       },
       [SenderEvents.settled]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.trace("sender settled")
+
+        this.tryFlush()
       },
       [SenderEvents.rejected]: (e: any) => {
         this.logger?.trace("sender rejected message")

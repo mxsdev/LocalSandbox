@@ -1,7 +1,7 @@
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
-  "can consume single message from queue",
+  "can abandon single message from queue",
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 
@@ -15,7 +15,7 @@ fixturedTest(
       bodyType: "value",
     })
 
-    const receiver = sb_client.createReceiver(queue.name!)
+    const receiver = sb_client.createReceiver(queue.name!, {})
     onTestFinished(() => receiver.close())
 
     {
