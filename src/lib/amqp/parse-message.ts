@@ -10,6 +10,9 @@ export type TypedRheaMessage =
   | Buffer
 
 export type ParsedTypedRheaMessage = Exclude<TypedRheaMessage, Buffer>
+export type ParsedTypedRheaMessageWithId = ParsedTypedRheaMessage & {
+  message_id: string
+}
 
 export const isSectionMessage = <T extends ParsedTypedRheaMessage>(
   msg: T,

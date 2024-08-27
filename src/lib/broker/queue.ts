@@ -2,39 +2,94 @@ import { Delivery, generate_uuid, Message, Sender, SenderEvents } from "rhea"
 import { Deque } from "@datastructures-js/deque"
 import { Logger } from "pino"
 import { Constants } from "@azure/core-amqp"
+import { BrokerStore } from "./broker.js"
+import { getQueueFromStoreOrThrow } from "./util.js"
 
-interface QueueConsumer {
+interface QueueConsumerDeliveryInfo<M> {
+  delivery: Delivery
+  message: M
+}
+
+interface QueueConsumer<M> {
   sender: Sender
-  current_delivery?: Delivery
+  current_delivery?: QueueConsumerDeliveryInfo<M>
   listeners: Partial<Record<SenderEvents, (...args: any[]) => void>>
 }
 
-export class BrokerQueue<M extends Message> {
+export class BrokerQueue<M extends Message & { message_id: string }> {
   _messages = new Deque<M>()
+  _locked_messages = new Map<string, M>()
 
-  constructor(private logger: Logger | undefined) {}
+  private consumers: Record<string, QueueConsumer<M>> = {}
+
+  constructor(
+    private store: BrokerStore,
+    public queue_id: string,
+    private logger: Logger | undefined,
+  ) {}
+
+  private get queue() {
+    // TODO: handle deletes more gracefully..
+    return getQueueFromStoreOrThrow(this.queue_id, this.store, this.logger)
+  }
+
+  private get fifo() {
+    return false
+  }
 
   private enqueue(...messages: M[]) {
-    messages
-      .map((m) => {
-        m.message_id ??= generate_uuid()
-        return m
-      })
-      .map(this._messages.pushFront.bind(this._messages))
+    messages.map(this._messages.pushFront.bind(this._messages))
+  }
+
+  private enqueueFront(...messages: M[]) {
+    messages.map(this._messages.pushBack.bind(this._messages))
   }
 
   private dequeue() {
     return this._messages.popBack()
   }
 
-  private consumers: Record<string, QueueConsumer> = {}
-
   scheduleMessages(...message: M[]) {
     this.enqueue(...message)
     this.tryFlush()
   }
 
+  scheduleMessagesInFront(...message: M[]) {
+    this.enqueueFront(...message)
+    this.tryFlush()
+  }
+
   addConsumer(sender: Sender) {
+    const retrieveConsumer = () => {
+      const consumer = this.consumers[sender.name]
+
+      if (!consumer) {
+        this.logger?.error({ sender: sender.name }, "Could not find consumer")
+        return
+      }
+
+      if (!consumer.current_delivery) {
+        this.logger?.error(
+          { sender: sender.name },
+          "Expected to find delivery...",
+        )
+        return
+      }
+
+      return consumer
+    }
+
+    const tryRedeliverMessage = (message: M) => {
+      this._locked_messages.delete(message.message_id)
+
+      message.delivery_count ??= 0
+      message.delivery_count += 1
+
+      // TODO: if message.delivery_count > queue.maxretries, send to DLQ or destroy
+
+      this.scheduleMessagesInFront(message)
+    }
+
     const listeners = {
       [SenderEvents.senderOpen]: (e: any) => {
         this.logger?.trace({ sender: e.sender.name }, "sender is open")
@@ -47,26 +102,57 @@ export class BrokerQueue<M extends Message> {
       [SenderEvents.accepted]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.trace("sender accepted message")
 
-        const consumer = this.consumers[sender.name]
+        const consumer = retrieveConsumer()
+        if (!consumer || !consumer.current_delivery) return
 
-        if (!consumer) {
-          this.logger?.error({ sender: sender.name }, "Could not find consumer")
-          return
+        if (consumer.sender.rcv_settle_mode === 1) {
+          consumer.current_delivery.delivery.update(true)
         }
 
-        if (!consumer.current_delivery) {
-          this.logger?.error(
-            { sender: sender.name },
-            "Expected to find delivery...",
-          )
-          return
-        }
-
-        if (e.sender.rcv_settle_mode === 1) {
-          consumer.current_delivery.update(true)
-        }
+        this._locked_messages.delete(
+          consumer.current_delivery.message.message_id,
+        )
 
         delete consumer.current_delivery
+      },
+      [SenderEvents.modified]: (e: { delivery: Delivery }) => {
+        const undeliverable_here =
+          e.delivery.remote_state?.["undeliverable_here"]
+        const delivery_failed = e.delivery.remote_state?.["delivery_failed"]
+        const message_annotations =
+          e.delivery.remote_state?.["message_annotations"]
+
+        if (undeliverable_here) {
+          // TODO: implement this
+        }
+
+        if (delivery_failed) {
+          // TODO: implement this
+        }
+
+        // TODO: merge message annotations w/ existing ones
+
+        this.logger?.debug(
+          { undeliverable_here, delivery_failed, message_annotations },
+          "sender modified",
+        )
+      },
+      [SenderEvents.released]: () => {
+        this.logger?.debug("sender released message")
+
+        const consumer = retrieveConsumer()
+        if (!consumer || !consumer.current_delivery) return
+
+        const { message, delivery } = consumer.current_delivery
+        delete consumer.current_delivery
+
+        this._locked_messages.delete(message.message_id)
+
+        if (consumer.sender.rcv_settle_mode === 1) {
+          delivery.update(true)
+        }
+
+        tryRedeliverMessage(message)
       },
       [SenderEvents.settled]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.trace("sender settled")
@@ -74,22 +160,15 @@ export class BrokerQueue<M extends Message> {
       [SenderEvents.rejected]: (e: any) => {
         this.logger?.trace("sender rejected message")
 
-        const consumer = this.consumers[sender.name]
+        const consumer = retrieveConsumer()
+        if (!consumer || !consumer.current_delivery) return
 
-        if (!consumer) {
-          this.logger?.error({ sender: sender.name }, "Could not find consumer")
-          return
-        }
+        const { message } = consumer.current_delivery
+        delete consumer.current_delivery
 
-        if (!consumer.current_delivery) {
-          this.logger?.error(
-            { sender: sender.name },
-            "Expected to find delivery...",
-          )
-          return
-        }
+        this._locked_messages.delete(message.message_id)
 
-        delete this.consumers[sender.name]!.current_delivery
+        tryRedeliverMessage(message)
       },
     }
 
@@ -129,14 +208,18 @@ export class BrokerQueue<M extends Message> {
       consumer.sender.sendable() &&
       consumer.sender.is_open() &&
       consumer.sender.is_remote_open() &&
+      (!this.fifo || this._locked_messages.size === 0) &&
       this._messages.size() > 0;
 
     ) {
       const message = this.dequeue()!
 
+      // TODO: check queue lock mode?
+      this._locked_messages.set(message.message_id, message)
+
       message.message_annotations ??= {}
 
-      // From: sdk/servicebus/service-bus/src/serviceBusMessage.ts:602
+      // From: azure-sdk-for-js/sdk/servicebus/service-bus/src/serviceBusMessage.ts:602
       //
       // Constants.enqueuedTime
       // Constants.sequenceNumber
@@ -146,13 +229,14 @@ export class BrokerQueue<M extends Message> {
       //    2 => scheduled
       // Constants.deadLetterSource
 
+      // TODO: implement this properly
       message.message_annotations[Constants.lockedUntil] =
         +new Date().getTime() + 1000000000
 
       // TODO: timeout
       const delivery = consumer.sender.send(message)
 
-      consumer.current_delivery = delivery
+      consumer.current_delivery = { delivery, message }
     }
   }
 }

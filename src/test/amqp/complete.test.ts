@@ -1,4 +1,4 @@
-import { fixturedTest } from "./fixtured-test.js"
+import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "can consume single message from queue",

@@ -1,3 +1,4 @@
+import hash from "object-hash"
 import { Receiver, Sender } from "rhea"
 import { BrokerStore, QualifiedQueueId } from "./broker.js"
 import { Logger } from "pino"
@@ -6,14 +7,27 @@ import { Logger } from "pino"
 export const getPeerQueue = (peer: Sender | Receiver) => peer.name.slice(0, -37)
 
 export const getQueueFromStoreOrThrow = (
-  queueId: QualifiedQueueId,
+  queueId: QualifiedQueueId | string,
   store: BrokerStore,
   logger: Logger | undefined,
 ) => {
+  const err = () => {
+    logger?.error(
+      { ...(typeof queueId === "object" ? queueId : { queueId }) },
+      "Could not find queue",
+    )
+
+    return new Error(`Queue not found: ${queue_name}`)
+  }
+
+  if (typeof queueId === "string") {
+    return store.sb_queue.getOrThrow(queueId, err)
+  }
+
   const { namespace_name, queue_name, resource_group_name, subscription_id } =
     queueId
 
-  return store.sb_queue
+  const queue = store.sb_queue
     .select()
     .where((queue) => queue.name === queue_name)
     .where((queue) => queue.sb_namespace().name === namespace_name)
@@ -26,9 +40,7 @@ export const getQueueFromStoreOrThrow = (
         queue.sb_namespace().resource_group().subscription().subscriptionId ===
         subscription_id,
     )
-    .executeTakeFirstOrThrow(() => {
-      logger?.error({ ...queueId }, "Could not find queue")
+    .executeTakeFirstOrThrow(err)
 
-      return new Error(`Queue not found: ${queue_name}`)
-    })
+  return queue
 }

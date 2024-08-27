@@ -1,17 +1,20 @@
-import type { Delivery, Message, Sender } from "rhea"
+import type { Delivery, Sender } from "rhea"
 import type {
   BrokerStore,
   QualifiedNamespaceId,
   QualifiedQueueId,
 } from "./broker.js"
 import { BrokerQueue } from "./queue.js"
-import hash from "object-hash"
 import { getPeerQueue, getQueueFromStoreOrThrow } from "./util.js"
 import { Logger } from "pino"
-import { ParsedTypedRheaMessage } from "../amqp/parse-message.js"
+import {
+  ParsedTypedRheaMessage,
+  ParsedTypedRheaMessageWithId,
+} from "../amqp/parse-message.js"
+import objectHash from "object-hash"
 
 export class BrokerConsumerBalancer {
-  private queues: Record<string, BrokerQueue<ParsedTypedRheaMessage>> = {}
+  private queues: Record<string, BrokerQueue<ParsedTypedRheaMessageWithId>> = {}
 
   constructor(
     private readonly store: BrokerStore,
@@ -21,9 +24,6 @@ export class BrokerConsumerBalancer {
     >,
     private readonly logger?: Logger,
   ) {}
-
-  // TODO: cleanup
-  //   private consumers: Record<string, Sender> = {}
 
   removeConsumers(where: (consumer: Sender) => boolean) {
     Object.values(this.queues).forEach((q) => q.removeConsumers(where))
@@ -45,20 +45,24 @@ export class BrokerConsumerBalancer {
     const qualifiedQueueId = { ...connection_namespace, queue_name }
 
     // ensure queue exists
-    getQueueFromStoreOrThrow(qualifiedQueueId, this.store, this.logger)
+    const queue = getQueueFromStoreOrThrow(
+      qualifiedQueueId,
+      this.store,
+      this.logger,
+    )
 
-    // this.consumers[sender.name] = sender
-    this.addSenderToQueue(sender, qualifiedQueueId)
+    this.addSenderToQueue(sender, queue.id)
   }
 
   deliverMessagesToQueue(
-    queueId: QualifiedQueueId,
+    queueId: QualifiedQueueId | string,
     delivery: Delivery,
-    ...message: ParsedTypedRheaMessage[]
+    ...message: ParsedTypedRheaMessageWithId[]
   ) {
-    getQueueFromStoreOrThrow(queueId, this.store, this.logger)
+    // TODO: handle when queue is deleted more gracefully
+    const queue = this.getQueueFromStoreOrThrow(queueId)
 
-    this.getOrCreate(queueId).scheduleMessages(...message)
+    this.getOrCreate(queue.id).scheduleMessages(...message)
 
     // TODO: should this be delayed until the message is successfully consumed e2e?
     delivery.accept()
@@ -69,30 +73,26 @@ export class BrokerConsumerBalancer {
     this.removeSenderFromAll(sender)
   }
 
-  private getOrCreate(queueId: QualifiedQueueId) {
-    const qid = hash(queueId)
-
-    if (this.queues[qid]) {
-      return this.queues[qid]
+  private getOrCreate(queueId: string) {
+    if (this.queues[queueId]) {
+      return this.queues[queueId]
     } else {
-      const queue = new BrokerQueue(this.logger)
-      this.queues[qid] = queue
+      const queue = new BrokerQueue(this.store, queueId, this.logger)
+      this.queues[queueId] = queue
       return queue
     }
   }
 
-  private delete(queueId: QualifiedQueueId | string) {
-    const qid = typeof queueId === "string" ? queueId : hash(queueId)
-
+  private delete(queueId: string) {
     // TODO
-    const queue = this.queues[qid]
+    const queue = this.queues[queueId]
     if (!queue) return
 
     queue.close()
-    delete this.queues[qid]
+    delete this.queues[queueId]
   }
 
-  private addSenderToQueue(sender: Sender, queueId: QualifiedQueueId) {
+  private addSenderToQueue(sender: Sender, queueId: string) {
     this.getOrCreate(queueId).addConsumer(sender)
   }
 
@@ -102,5 +102,23 @@ export class BrokerConsumerBalancer {
 
   close() {
     Object.keys(this.queues).forEach(this.delete.bind(this))
+  }
+
+  private queue_cache: Record<string, string> = {}
+
+  private getQueueFromStoreOrThrow(queueId: string | QualifiedQueueId) {
+    const queue = getQueueFromStoreOrThrow(
+      typeof queueId === "string"
+        ? queueId
+        : (this.queue_cache[objectHash(queueId)] ?? queueId),
+      this.store,
+      this.logger,
+    )
+
+    if (typeof queueId === "object") {
+      this.queue_cache[objectHash(queueId)] = queue.id
+    }
+
+    return queue
   }
 }

@@ -15,7 +15,13 @@ import {
   BrokerServer,
   BrokerServerOpts,
 } from "./server.js"
-import type { Receiver, Sender, Session, AmqpError } from "rhea"
+import {
+  type Receiver,
+  type Sender,
+  type Session,
+  type AmqpError,
+  generate_uuid,
+} from "rhea"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import { getPeerQueue, getQueueFromStoreOrThrow } from "./util.js"
 
@@ -169,7 +175,10 @@ export class AzureServiceBusBroker extends BrokerServer {
       this.consumer_balancer.deliverMessagesToQueue(
         qualifiedQueueId,
         delivery,
-        ...messages_to_enqueue,
+        ...messages_to_enqueue.map((m) => {
+          m["message_id"] ??= generate_uuid()
+          return m as typeof m & { message_id: string }
+        }),
       )
     } catch (e: any) {
       delivery.reject({

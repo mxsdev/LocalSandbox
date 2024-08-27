@@ -22,7 +22,8 @@
         "module": "Node16",
         "paths": {
             "edgespec": ["./src/lib/edgespec/index.ts"],
-            "edgespec/*": ["./src/lib/edgespec/*"]
+            "edgespec/*": ["./src/lib/edgespec/*"],
+            "test/*": ["./src/test/*"]
         }
     }
 }
