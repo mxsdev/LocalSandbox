@@ -168,7 +168,11 @@ export class AzureServiceBusBroker extends BrokerServer {
       const messages_to_enqueue = parseBatchOrMessage(parsed_message)
 
       this.logger?.debug(
-        { receiver: receiver.name, queue_name },
+        {
+          receiver: receiver.name,
+          queue_name,
+          num_messages: messages_to_enqueue.length,
+        },
         "delivering message batch",
       )
 
@@ -190,6 +194,8 @@ export class AzureServiceBusBroker extends BrokerServer {
   override async onReceiverOpen({
     receiver,
   }: BrokerReceiverEvent): Promise<void> {
+    this.logger?.trace({ receiver: receiver.name }, "receiver opened")
+
     this.queue_producers[receiver.name] = receiver
   }
   override async onReceiverClose({
@@ -199,6 +205,8 @@ export class AzureServiceBusBroker extends BrokerServer {
   }
 
   override async onSenderOpen({ sender }: BrokerSenderEvent): Promise<void> {
+    this.logger?.debug({ sender: sender.name }, "sender opened")
+
     if (this.connection_namespaces[sender.connection.container_id]) {
       this.consumer_balancer.add(sender)
     } else {

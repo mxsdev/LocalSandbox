@@ -12,7 +12,7 @@ interface QueueConsumerDeliveryInfo<M> {
 
 interface QueueConsumer<M> {
   sender: Sender
-  current_delivery?: QueueConsumerDeliveryInfo<M>
+  current_delivery: Record<string, QueueConsumerDeliveryInfo<M>>
   listeners: Partial<Record<SenderEvents, (...args: any[]) => void>>
 }
 
@@ -38,11 +38,11 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
   }
 
   private enqueue(...messages: M[]) {
-    messages.map(this._messages.pushFront.bind(this._messages))
+    messages.forEach(this._messages.pushFront.bind(this._messages))
   }
 
   private enqueueFront(...messages: M[]) {
-    messages.map(this._messages.pushBack.bind(this._messages))
+    messages.forEach(this._messages.pushBack.bind(this._messages))
   }
 
   private dequeue() {
@@ -60,7 +60,9 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
   }
 
   addConsumer(sender: Sender) {
-    const retrieveConsumer = () => {
+    this.logger?.debug({ sender: sender.name }, "Registering sender")
+
+    const retrieveConsumer = (delivery: Delivery) => {
       const consumer = this.consumers[sender.name]
 
       if (!consumer) {
@@ -68,7 +70,7 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
         return
       }
 
-      if (!consumer.current_delivery) {
+      if (!consumer.current_delivery[delivery.id]) {
         this.logger?.error(
           { sender: sender.name },
           "Expected to find delivery...",
@@ -76,7 +78,7 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
         return
       }
 
-      return consumer
+      return { consumer, ...consumer.current_delivery[delivery.id] }
     }
 
     const tryRedeliverMessage = (message: M) => {
@@ -96,24 +98,23 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
         this.tryFlush()
       },
       [SenderEvents.sendable]: (e: any) => {
-        this.logger?.trace("sender is sendable")
+        this.logger?.debug("sender is sendable")
         this.tryFlush()
       },
       [SenderEvents.accepted]: (e: { delivery: Delivery; sender: Sender }) => {
-        this.logger?.trace("sender accepted message")
+        this.logger?.debug("sender accepted message")
 
-        const consumer = retrieveConsumer()
-        if (!consumer || !consumer.current_delivery) return
+        const { consumer, delivery, message } =
+          retrieveConsumer(e.delivery) ?? {}
+        if (!consumer || !delivery || !message) return
 
         if (consumer.sender.rcv_settle_mode === 1) {
-          consumer.current_delivery.delivery.update(true)
+          delivery.update(true)
         }
 
-        this._locked_messages.delete(
-          consumer.current_delivery.message.message_id,
-        )
+        this._locked_messages.delete(message.message_id)
 
-        delete consumer.current_delivery
+        delete consumer.current_delivery[delivery.id]
 
         this.tryFlush()
       },
@@ -139,15 +140,14 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
           "sender modified",
         )
       },
-      [SenderEvents.released]: () => {
+      [SenderEvents.released]: (e: { delivery: Delivery }) => {
         this.logger?.debug("sender released message")
 
-        const consumer = retrieveConsumer()
-        if (!consumer || !consumer.current_delivery) return
+        const { consumer, delivery, message } =
+          retrieveConsumer(e.delivery) ?? {}
+        if (!consumer || !delivery || !message) return
 
-        const { message, delivery } = consumer.current_delivery
-        delete consumer.current_delivery
-
+        delete consumer.current_delivery[delivery.id]
         this._locked_messages.delete(message.message_id)
 
         if (consumer.sender.rcv_settle_mode === 1) {
@@ -157,18 +157,18 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
         tryRedeliverMessage(message)
       },
       [SenderEvents.settled]: (e: { delivery: Delivery; sender: Sender }) => {
-        this.logger?.trace("sender settled")
+        this.logger?.debug("sender settled")
 
         this.tryFlush()
       },
       [SenderEvents.rejected]: (e: any) => {
-        this.logger?.trace("sender rejected message")
+        this.logger?.debug("sender rejected message")
 
-        const consumer = retrieveConsumer()
-        if (!consumer || !consumer.current_delivery) return
+        const { consumer, delivery, message } =
+          retrieveConsumer(e.delivery) ?? {}
+        if (!consumer || !delivery || !message) return
 
-        const { message } = consumer.current_delivery
-        delete consumer.current_delivery
+        delete consumer.current_delivery[delivery.id]
 
         this._locked_messages.delete(message.message_id)
 
@@ -178,7 +178,7 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
 
     Object.entries(listeners).forEach((args) => sender.addListener(...args))
 
-    this.consumers[sender.name] = { sender, listeners }
+    this.consumers[sender.name] = { sender, listeners, current_delivery: {} }
     this.tryFlush()
   }
 
@@ -204,17 +204,18 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
   close() {}
 
   private tryFlush() {
-    for (
-      let consumer = Object.values(this.consumers).find(
-        (consumer) => !consumer.current_delivery,
-      );
-      consumer &&
-      consumer.sender.sendable() &&
-      consumer.sender.is_open() &&
-      consumer.sender.is_remote_open() &&
-      (!this.fifo || this._locked_messages.size === 0) &&
-      this._messages.size() > 0;
+    let consumer: QueueConsumer<M> | undefined
 
+    while (
+      (consumer = Object.values(this.consumers).find(
+        (consumer) =>
+          // !consumer.current_delivery &&
+          consumer.sender.sendable() &&
+          consumer.sender.is_open() &&
+          consumer.sender.is_remote_open() &&
+          (!this.fifo || this._locked_messages.size === 0) &&
+          this._messages.size() > 0,
+      ))
     ) {
       const message = this.dequeue()!
 
@@ -240,7 +241,16 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
       // TODO: timeout
       const delivery = consumer.sender.send(message)
 
-      consumer.current_delivery = { delivery, message }
+      this.logger?.debug(
+        {
+          delivery_id: delivery.id,
+          consumer: consumer.sender.name,
+          // delivery: consumer.current_delivery?.delivery.id,
+        },
+        "Sent message",
+      )
+
+      consumer.current_delivery[delivery.id] = { delivery, message }
     }
   }
 }
