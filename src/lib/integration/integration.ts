@@ -125,6 +125,39 @@ type LazyError = (() => Error) | Error
 const resolveLazyError = (err: LazyError) =>
   typeof err === "function" ? err() : err
 
+type ModelTriggers<
+  Root extends ModelSpecs<any>,
+  Spec extends ModelSpec<any, keyof Root & string>,
+  ModelName extends keyof Root & string,
+> = {
+  insert?: (val: SpecWithRelationalId<Root, Spec>) => void
+  update?: (
+    old_val: SpecWithRelationalId<Root, Spec>,
+    new_val: SpecWithRelationalId<Root, Spec>,
+  ) => void
+  insertOrUpdate?: (
+    old_val: SpecWithRelationalId<Root, Spec> | undefined,
+    new_val: SpecWithRelationalId<Root, Spec>,
+  ) => void
+  delete?: (val: SpecWithRelationalId<Root, Spec>) => void
+}
+
+export const createNewStore = <T extends Store<any>>(store: T): T => {
+  const new_store = {}
+
+  Object.assign(
+    new_store,
+    Object.fromEntries(
+      Object.entries(store).map(([k, v]) => [
+        k,
+        v["createNewInstance"](new_store),
+      ]),
+    ),
+  )
+
+  return new_store as T
+}
+
 class Model<
   Root extends ModelSpecs<any>,
   Spec extends ModelSpec<any, keyof Root & string>,
@@ -134,7 +167,13 @@ class Model<
     protected spec: Spec,
     protected models: Store<Root>,
     protected modelName: ModelName,
+    // TODO: implement
+    protected triggers: ModelTriggers<Root, Spec, ModelName> = {},
   ) {}
+
+  private createNewInstance(models: Store<Root>) {
+    return new Model(this.spec, models, this.modelName)
+  }
 
   protected mutex = new Mutex()
 
@@ -468,7 +507,7 @@ export function createModelSpecs<
       SpecMap[K]["schema"] extends AnyModelSchema
         ? SpecMap[K]["schema"]
         : AnyModelSchema,
-      keyof SpecMap
+      keyof SpecMap & string
     >
   },
 >(spec: SpecMap) {
@@ -484,7 +523,14 @@ type Store<MS extends ModelSpecs<any>> = {
   [Key in keyof MS & string]: Model<MS, MS[Key], Key>
 }
 
-export const getStore = <const MS extends ModelSpecs<any>>(modelSpecs: MS) => {
+type ModelsTriggers<MS extends ModelSpecs<any>> = {
+  [K in keyof MS & string]?: ModelTriggers<MS, MS[K], K>
+}
+
+export const getStore = <const MS extends ModelSpecs<any>>(
+  modelSpecs: MS,
+  triggers?: ModelsTriggers<MS>,
+) => {
   let models: Store<MS> = {} as any
 
   Object.assign(
@@ -492,7 +538,7 @@ export const getStore = <const MS extends ModelSpecs<any>>(modelSpecs: MS) => {
     Object.fromEntries(
       Object.entries(modelSpecs).map(([modelName, modelSpec]) => [
         modelName,
-        new Model(modelSpec as any, models, modelName),
+        new Model(modelSpec as any, models, modelName, triggers),
       ]),
     ),
   )
@@ -501,17 +547,18 @@ export const getStore = <const MS extends ModelSpecs<any>>(modelSpecs: MS) => {
 }
 
 interface IntegrationSpec<MS extends ModelSpecs<any>, GS extends GlobalSpec> {
-  models: MS
   globalSpec: GS
+  models: MS
+  triggers?: ModelsTriggers<MS>
 }
 
 export function createIntegration<
   const MS extends ModelSpecs<any>,
   const GS extends GlobalSpec,
 >(integrationSpec: IntegrationSpec<MS, GS>) {
-  const { models: modelSpecs, globalSpec } = integrationSpec
+  const { models: modelSpecs, globalSpec, triggers } = integrationSpec
 
-  const models = getStore(modelSpecs)
+  const models = getStore(modelSpecs, triggers)
 
   const storeMiddleware: Middleware<{}, { store: Store<MS> }> = async (
     req,
@@ -538,16 +585,12 @@ export function createIntegration<
     ]
   })
 
-  return new IntegrationBuilder(
-    createRouteFn,
-    {},
-    {
-      cleanup: async () => {
-        // db.close()
-      },
-      integrationSpec,
+  return new IntegrationBuilder(createRouteFn, {}, models, {
+    cleanup: async () => {
+      // db.close()
     },
-  )
+    integrationSpec,
+  })
 }
 
 export class UnimplementedError extends EdgeSpecMiddlewareError {
@@ -584,6 +627,7 @@ export class IntegrationBuilder<
   constructor(
     private readonly createWithRouteFn: CreateWithRouteSpecFn<GS>,
     private routeMap: EdgeSpecRouteMap<GS>,
+    private store: IntegrationStore<IntegrationBuilder<GS, IS>>,
     private readonly options: {
       cleanup: () => Promise<void>
       readonly integrationSpec: IS

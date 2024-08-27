@@ -6,9 +6,14 @@ import { SonicBoom } from "sonic-boom"
 interface LoggerOptions {
   app?: string
   stream?: NodeJS.WritableStream
+  level?: string
 }
 
-export const getLogger = ({ app, stream }: LoggerOptions = {}) => {
+export const getLogger = ({
+  app,
+  stream,
+  level = "info",
+}: LoggerOptions = {}) => {
   const pretty_stream = pretty({
     // sync: true,
     // colorize: colorette.isColorSupported, // --colorize
@@ -59,7 +64,7 @@ export const getLogger = ({ app, stream }: LoggerOptions = {}) => {
   return createLogger(
     {
       name: app,
-      level: "trace",
+      level,
     },
     final_stream,
   )
