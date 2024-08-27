@@ -10,12 +10,10 @@ fixturedTest(
     const sender = sb_client.createSender(queue.name!)
     onTestFinished(() => sender.close())
 
-    await Promise.all([
-      sender.sendMessages({
-        body: "hello world!",
-        bodyType: "value",
-      }),
-    ])
+    await sender.sendMessages({
+      body: "hello world!",
+      bodyType: "value",
+    })
 
     const receiver = sb_client.createReceiver(queue.name!)
     onTestFinished(() => receiver.close())
