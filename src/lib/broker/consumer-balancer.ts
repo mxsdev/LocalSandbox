@@ -18,10 +18,6 @@ export class BrokerConsumerBalancer {
 
   constructor(
     private readonly store: BrokerStore,
-    private readonly connection_namespaces: Record<
-      string,
-      QualifiedNamespaceId
-    >,
     private readonly logger?: Logger,
   ) {}
 
@@ -29,21 +25,11 @@ export class BrokerConsumerBalancer {
     Object.values(this.queues).forEach((q) => q.removeConsumers(where))
   }
 
-  add(sender: Sender, sender_name?: string) {
-    const queue_name = getPeerQueue(sender_name ?? sender)
-
-    const connection_namespace =
-      this.connection_namespaces[sender.connection.container_id]
-
-    if (!connection_namespace) {
-      this.logger?.error(
-        "Could not find connection metadata for queue, did the handshake go through?",
-      )
-      throw new Error("Could not find connection metadata for queue")
-    }
-
-    const qualifiedQueueId = { ...connection_namespace, queue_name }
-
+  add(
+    qualifiedQueueId: QualifiedQueueId,
+    sender: Sender,
+    sender_name?: string,
+  ) {
     // ensure queue exists
     const queue = getQueueFromStoreOrThrow(
       qualifiedQueueId,
