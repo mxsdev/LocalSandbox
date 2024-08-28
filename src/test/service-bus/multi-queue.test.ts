@@ -25,24 +25,24 @@ fixturedTest(
       }),
     ])
 
-    // {
-    //   const receiver = sb_client.createReceiver(queue.name!)
-    //   onTestFinished(() => receiver.close())
+    {
+      const receiver = sb_client.createReceiver(queue.name!)
+      onTestFinished(() => receiver.close())
 
-    //   const [message] = await receiver.receiveMessages(1)
-    //   expect(message!.body).toBe("hello world!")
+      const [message] = await receiver.receiveMessages(1)
+      expect(message!.body).toBe("hello world!")
 
-    //   await receiver.completeMessage(message!)
-    // }
+      await receiver.completeMessage(message!)
+    }
 
-    // {
-    //   const receiver = sb_client.createReceiver(queue2.name!)
-    //   onTestFinished(() => receiver.close())
+    {
+      const receiver = sb_client.createReceiver(queue2.name!)
+      onTestFinished(() => receiver.close())
 
-    //   const [message] = await receiver.receiveMessages(1)
-    //   expect(message!.body).toBe("hello world2!")
+      const [message] = await receiver.receiveMessages(1)
+      expect(message!.body).toBe("hello world2!")
 
-    //   await receiver.completeMessage(message!)
-    // }
+      await receiver.completeMessage(message!)
+    }
   },
 )
