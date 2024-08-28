@@ -1,10 +1,4 @@
-import { subscription } from "../../../output/resources/resource-manager/Microsoft.Resources/stable/2016-06-01/subscriptions.js"
-import hash from "object-hash"
-import {
-  parseBatchOrMessage,
-  parseRheaMessage,
-  parseRheaMessageBody,
-} from "../amqp/parse-message.js"
+import { parseBatchOrMessage, parseRheaMessage } from "../amqp/parse-message.js"
 import type { azure_routes } from "../integration/azure/routes.js"
 import type { IntegrationStore } from "../integration/integration.js"
 import {
@@ -19,13 +13,11 @@ import {
   type Receiver,
   type Sender,
   type Session,
-  type AmqpError,
   generate_uuid,
-  Delivery,
   Connection,
 } from "rhea"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
-import { getPeerQueue, getQueueFromStoreOrThrow } from "./util.js"
+import { getQueueFromStoreOrThrow } from "./util.js"
 import { Constants } from "@azure/core-amqp"
 import { Deque } from "@datastructures-js/deque"
 
@@ -96,75 +88,62 @@ export class AzureServiceBusBroker extends BrokerServer {
           throw new Error("Could not reply to queue consumer")
         }
 
-        // if (
-        //   message.application_properties?.["operation"] ===
-        //   "com.microsoft:schedule-message"
-        // ) {
-        //   const existing_connection =
-        //     this.connection_namespaces[connection.container_id]
+        if (
+          message.application_properties?.["operation"] ===
+          "com.microsoft:schedule-message"
+        ) {
+          const queue = this.link_queue.get(receiver)
 
-        //   if (!existing_connection) {
-        //     this.logger?.error(
-        //       { reply_to: message.reply_to },
-        //       "Could not find existing connection",
-        //     )
-        //     throw new Error("Could not find existing connection")
-        //   }
+          if (!queue) {
+            this.logger?.error(
+              "Could not find queue for receiver, did the handshake go through?",
+            )
+            throw new Error(
+              "Could not find queue for receiver, did the handshake go through?",
+            )
+          }
 
-        //   const link_name =
-        //     message.application_properties?.["associated-link-name"]
+          this.logger?.debug(
+            {
+              reply_to: message.reply_to,
+              queue_name: queue.queue_name,
+              properties: message.application_properties,
+              receiver: receiver.name,
+            },
+            "Accepting scheduled message",
+          )
 
-        //   if (!link_name) {
-        //     this.logger?.error(
-        //       { reply_to: message.reply_to },
-        //       "Message did not have assocaited link name",
-        //     )
-        //     throw new Error("Message did not have assocaited link name")
-        //   }
+          const { messages } = message.body as {
+            messages: { message: Buffer; "message-id": string }[]
+          }
 
-        //   this.logger?.debug(
-        //     {
-        //       reply_to: message.reply_to,
-        //       existing_connection,
-        //       properties: message.application_properties,
-        //       receiver: receiver.name,
-        //     },
-        //     "Accepting scheduled message",
-        //   )
+          this.consumer_balancer.deliverMessagesToQueue(
+            queue,
+            delivery,
+            ...messages.flatMap(({ message: buffer, "message-id": mid }) =>
+              parseBatchOrMessage(buffer).map((v) => {
+                v["message_id"] ??= mid ?? generate_uuid()
+                return v as typeof v & { message_id: string }
+              }),
+            ),
+          )
 
-        //   const { messages } = message.body as {
-        //     messages: { message: Buffer; "message-id": string }[]
-        //   }
+          delivery.accept()
 
-        //   const queue_name = getPeerQueue(link_name)
+          consumer.send({
+            correlation_id: message.message_id,
+            body: {
+              // TODO: does this need to be implemented when sequence number
+              // support is added?
+              [Constants.sequenceNumbers]: [],
+            },
+            application_properties: {
+              "status-code": 200,
+            },
+          })
 
-        //   this.consumer_balancer.deliverMessagesToQueue(
-        //     { ...existing_connection, queue_name },
-        //     delivery,
-        //     ...messages.flatMap(({ message: buffer, "message-id": mid }) =>
-        //       parseBatchOrMessage(buffer).map((v) => {
-        //         v["message_id"] ??= mid ?? generate_uuid()
-        //         return v as typeof v & { message_id: string }
-        //       }),
-        //     ),
-        //   )
-
-        //   delivery.accept()
-
-        //   consumer.send({
-        //     correlation_id: message.message_id,
-        //     body: {
-        //       // TODO: does this need to be implemented when sequence number
-        //       // support is added?
-        //       [Constants.sequenceNumbers]: [],
-        //     },
-        //     application_properties: {
-        //       "status-code": 200,
-        //     },
-        //   })
-
-        //   return
-        // }
+          return
+        }
 
         const sb_connection_string = message.application_properties?.["name"]
 
@@ -243,8 +222,6 @@ export class AzureServiceBusBroker extends BrokerServer {
 
     try {
       const queue = this.link_queue.get(receiver)
-
-      console.log(message)
 
       if (!queue) {
         this.logger?.error(
