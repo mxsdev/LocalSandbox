@@ -20,6 +20,8 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
   _messages = new Deque<M>()
   _locked_messages = new Map<string, M>()
 
+  private timeouts: NodeJS.Timeout[] = []
+
   private consumers: Record<string, QueueConsumer<M>> = {}
 
   constructor(
@@ -49,8 +51,39 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
     return this._messages.popBack()
   }
 
-  scheduleMessages(...message: M[]) {
-    this.enqueue(...message)
+  scheduleMessages(...messages: M[]) {
+    const messages_for_immediate_delivery: M[] = []
+
+    for (const message of messages) {
+      const scheduled_enqueued_time = message.message_annotations?.[
+        Constants.scheduledEnqueueTime
+      ] as Date | undefined
+
+      if (
+        scheduled_enqueued_time &&
+        !(scheduled_enqueued_time instanceof Date)
+      ) {
+        throw new Error(
+          `Expected ${Constants.scheduledEnqueueTime} to be parsed as JS Date instance`,
+        )
+      }
+
+      if (
+        scheduled_enqueued_time &&
+        scheduled_enqueued_time.getTime() > Date.now()
+      ) {
+        this.timeouts.push(
+          setTimeout(() => {
+            this.enqueue(message)
+            this.tryFlush()
+          }, scheduled_enqueued_time.getTime() - Date.now()),
+        )
+      } else {
+        messages_for_immediate_delivery.push(message)
+      }
+    }
+
+    this.enqueue(...messages_for_immediate_delivery)
     this.tryFlush()
   }
 
@@ -60,7 +93,10 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
   }
 
   addConsumer(sender: Sender) {
-    this.logger?.debug({ sender: sender.name }, "Registering sender")
+    this.logger?.debug(
+      { sender: sender.name, queue_id: this.queue_id },
+      "Registering sender",
+    )
 
     const retrieveConsumer = (delivery: Delivery) => {
       const consumer = this.consumers[sender.name]
@@ -201,7 +237,9 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
     }
   }
 
-  close() {}
+  close() {
+    this.timeouts.forEach(clearTimeout)
+  }
 
   private tryFlush() {
     let consumer: QueueConsumer<M> | undefined

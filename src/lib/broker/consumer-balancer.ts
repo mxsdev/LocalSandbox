@@ -29,8 +29,8 @@ export class BrokerConsumerBalancer {
     Object.values(this.queues).forEach((q) => q.removeConsumers(where))
   }
 
-  add(sender: Sender) {
-    const queue_name = getPeerQueue(sender)
+  add(sender: Sender, sender_name?: string) {
+    const queue_name = getPeerQueue(sender_name ?? sender)
 
     const connection_namespace =
       this.connection_namespaces[sender.connection.container_id]

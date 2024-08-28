@@ -4,7 +4,8 @@ import { BrokerStore, QualifiedQueueId } from "./broker.js"
 import { Logger } from "pino"
 
 // TODO: there must be a better way to do this...
-export const getPeerQueue = (peer: Sender | Receiver) => peer.name.slice(0, -37)
+export const getPeerQueue = (peer: Sender | Receiver | string) =>
+  (typeof peer === "string" ? peer : peer.name).slice(0, -37)
 
 export const getQueueFromStoreOrThrow = (
   queueId: QualifiedQueueId | string,

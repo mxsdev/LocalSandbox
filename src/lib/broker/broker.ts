@@ -24,6 +24,7 @@ import {
 } from "rhea"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import { getPeerQueue, getQueueFromStoreOrThrow } from "./util.js"
+import { Constants } from "@azure/core-amqp"
 
 export type BrokerStore = IntegrationStore<typeof azure_routes>
 
@@ -72,6 +73,76 @@ export class AzureServiceBusBroker extends BrokerServer {
             "Could not reply to queue consumer",
           )
           throw new Error("Could not reply to queue consumer")
+        }
+
+        if (
+          message.application_properties?.["operation"] ===
+          "com.microsoft:schedule-message"
+        ) {
+          const existing_connection =
+            this.connection_namespaces[connection.container_id]
+
+          if (!existing_connection) {
+            this.logger?.error(
+              { reply_to: message.reply_to },
+              "Could not find existing connection",
+            )
+            throw new Error("Could not find existing connection")
+          }
+
+          const link_name =
+            message.application_properties?.["associated-link-name"]
+
+          if (!link_name) {
+            this.logger?.error(
+              { reply_to: message.reply_to },
+              "Message did not have assocaited link name",
+            )
+            throw new Error("Message did not have assocaited link name")
+          }
+
+          this.logger?.debug(
+            {
+              reply_to: message.reply_to,
+              existing_connection,
+              properties: message.application_properties,
+              receiver: receiver.name,
+            },
+            "Accepting scheduled message",
+          )
+
+          const { messages } = message.body as {
+            messages: { message: Buffer; "message-id": string }[]
+          }
+
+          const queue_name = getPeerQueue(link_name)
+
+          this.consumer_balancer.deliverMessagesToQueue(
+            { ...existing_connection, queue_name },
+            delivery,
+            ...messages.flatMap(({ message: buffer, "message-id": mid }) =>
+              parseBatchOrMessage(buffer).map((v) => {
+                v["message_id"] ??= mid ?? generate_uuid()
+                return v as typeof v & { message_id: string }
+              }),
+            ),
+          )
+
+          delivery.accept()
+
+          consumer.send({
+            correlation_id: message.message_id,
+            body: {
+              // TODO: does this need to be implemented when sequence number
+              // support is added?
+              [Constants.sequenceNumbers]: [],
+            },
+            application_properties: {
+              "status-code": 200,
+            },
+          })
+
+          return
         }
 
         const sb_connection_string = message.application_properties?.["name"]
@@ -128,6 +199,7 @@ export class AzureServiceBusBroker extends BrokerServer {
             resource_group_name,
             namespace_name,
             subscription_id,
+            sb_connection_string,
           },
           "Handshake initialized",
         )
@@ -194,7 +266,7 @@ export class AzureServiceBusBroker extends BrokerServer {
   override async onReceiverOpen({
     receiver,
   }: BrokerReceiverEvent): Promise<void> {
-    this.logger?.trace({ receiver: receiver.name }, "receiver opened")
+    this.logger?.debug({ receiver: receiver.name }, "receiver opened")
 
     this.queue_producers[receiver.name] = receiver
   }
@@ -205,9 +277,15 @@ export class AzureServiceBusBroker extends BrokerServer {
   }
 
   override async onSenderOpen({ sender }: BrokerSenderEvent): Promise<void> {
-    this.logger?.debug({ sender: sender.name }, "sender opened")
+    this.logger?.debug(
+      { sender: sender.name, properties: sender.properties },
+      "sender opened",
+    )
 
-    if (this.connection_namespaces[sender.connection.container_id]) {
+    if (
+      this.connection_namespaces[sender.connection.container_id] &&
+      sender.name.length > 37
+    ) {
       this.consumer_balancer.add(sender)
     } else {
       this.handshake_senders[sender.name] = sender
