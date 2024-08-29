@@ -21,7 +21,12 @@ import { getQueueFromStoreOrThrow } from "./util.js"
 import { Constants } from "@azure/core-amqp"
 import { Deque } from "@datastructures-js/deque"
 import { z } from "zod"
-import Long from "long"
+import {
+  serializedLong,
+  unserializedLongToArrayLike,
+  unserializedLongToBufferLike,
+} from "../util/long.js"
+import { BrokerConstants } from "./constants.js"
 
 export type BrokerStore = IntegrationStore<typeof azure_routes>
 
@@ -78,8 +83,6 @@ export class AzureServiceBusBroker extends BrokerServer {
     connection,
     session,
   }: BrokerMessageEvent): Promise<void> {
-    console.log(message)
-
     const operation = message.application_properties?.["operation"]
 
     try {
@@ -166,16 +169,7 @@ export class AzureServiceBusBroker extends BrokerServer {
         delivery.accept()
         respondSuccess(consumer, "Accepted")
       } else {
-        if (message.reply_to && operation) {
-          const consumer = this.cbs_senders[message.reply_to]
-          if (!consumer) {
-            this.logger?.error(
-              { reply_to: message.reply_to },
-              "Could not reply to queue consumer",
-            )
-            throw new Error("Could not reply to queue consumer")
-          }
-
+        if (operation) {
           const parsed = z
             .discriminatedUnion("operation", [
               z.object({
@@ -194,7 +188,15 @@ export class AzureServiceBusBroker extends BrokerServer {
                   Constants.operations.cancelScheduledMessage,
                 ),
                 body: z.object({
-                  [Constants.sequenceNumbers]: z.number().array(),
+                  [Constants.sequenceNumbers]: serializedLong.array(),
+                }),
+              }),
+              z.object({
+                operation: z.literal(
+                  BrokerConstants.debug.operations.setSequenceNumber,
+                ),
+                body: z.object({
+                  [Constants.sequenceNumber]: serializedLong,
                 }),
               }),
             ])
@@ -209,6 +211,42 @@ export class AzureServiceBusBroker extends BrokerServer {
               `Failed to parse message operation "${operation}"`,
             )
             return
+          }
+
+          if (
+            parsed.data.operation ===
+            BrokerConstants.debug.operations.setSequenceNumber
+          ) {
+            const sequenceNumber = parsed.data.body[Constants.sequenceNumber]
+
+            this.logger?.info(
+              `Setting broker sequence number to ${sequenceNumber.toString()}`,
+            )
+
+            this.consumer_balancer["next_sequence_number"] = sequenceNumber
+
+            delivery.accept()
+            return
+          }
+
+          if (!message.reply_to) {
+            this.logger?.error(
+              {
+                receiver: receiver.name,
+                operation,
+              },
+              "Expected message to have reply_to",
+            )
+            throw new Error("Expected message to have reply_to")
+          }
+
+          const consumer = this.cbs_senders[message.reply_to]
+          if (!consumer) {
+            this.logger?.error(
+              { reply_to: message.reply_to },
+              "Could not reply to queue consumer",
+            )
+            throw new Error("Could not reply to queue consumer")
           }
 
           const queue = this.link_queue.get(receiver)
@@ -250,7 +288,6 @@ export class AzureServiceBusBroker extends BrokerServer {
 
                 delivery.accept()
                 respondSuccess(consumer, {
-                  // TODO!!
                   [Constants.sequenceNumbers]: sequenceNumbers,
                 })
               }
@@ -265,7 +302,7 @@ export class AzureServiceBusBroker extends BrokerServer {
                   if (
                     !this.consumer_balancer.cancelScheduledMessage(
                       queue,
-                      new Long(sequenceNumber),
+                      sequenceNumber,
                     )
                   ) {
                     this.logger?.warn(
