@@ -2,10 +2,14 @@ import { Delivery, generate_uuid, Message, Sender, SenderEvents } from "rhea"
 import { Deque } from "@datastructures-js/deque"
 import { Logger } from "pino"
 import { Constants } from "@azure/core-amqp"
-import { BrokerStore } from "./broker.js"
-import { getQueueFromStoreOrThrow } from "./util.js"
+import { BrokerStore, QualifiedQueueId } from "./broker.js"
+import {
+  getQualifiedQueueIdFromStoreQueue,
+  getQueueFromStoreOrThrow,
+} from "./util.js"
 import Long from "long"
 import { BufferLikeEncodedLong, serializedLong } from "../util/long.js"
+import { BrokerConsumerBalancer } from "./consumer-balancer.js"
 
 interface QueueConsumerDeliveryInfo<M> {
   delivery: Delivery
@@ -37,6 +41,7 @@ export class BrokerQueue<
     private store: BrokerStore,
     public queue_id: string,
     private logger: Logger | undefined,
+    private consumer_balancer: BrokerConsumerBalancer,
   ) {}
 
   private get queue() {
@@ -58,6 +63,34 @@ export class BrokerQueue<
 
   private dequeue() {
     return this._messages.popBack()
+  }
+
+  tryDeadletterMessage(message: M, reason?: string, description?: string) {
+    const queue = this.queue
+
+    if (queue.properties.forwardDeadLetteredMessagesTo === queue.name) {
+      throw new Error("Cannot dead-letter to self")
+    }
+
+    const queue_id = getQualifiedQueueIdFromStoreQueue(queue)
+
+    // TODO: should we throw here if there's no queue, or if queue is invalid?
+    // TODO: should we throw here if the message has already been dead lettered?
+    if (queue.properties.forwardDeadLetteredMessagesTo) {
+      const dlq_id = {
+        ...queue_id,
+        queue_name: queue.properties.forwardDeadLetteredMessagesTo,
+      }
+
+      message.message_annotations[Constants.deadLetterSource] =
+        dlq_id.queue_name
+
+      message.message_annotations[Constants.deadLetterReason] = reason
+
+      message.message_annotations[Constants.deadLetterDescription] = description
+
+      this.consumer_balancer.deliverMessagesToQueue(dlq_id, message)
+    }
   }
 
   scheduleMessages(...messages: M[]) {
@@ -219,18 +252,29 @@ export class BrokerQueue<
 
         this.tryFlush()
       },
-      [SenderEvents.rejected]: (e: any) => {
-        this.logger?.debug("sender rejected message")
+      [SenderEvents.rejected]: (e: { delivery: Delivery }) => {
+        this.logger?.debug(Object.keys(e), "sender rejected message")
 
         const { consumer, delivery, message } =
           retrieveConsumer(e.delivery) ?? {}
         if (!consumer || !delivery || !message) return
 
+        const error = e.delivery.remote_state?.["error"]
+
+        if (error?.condition === Constants.deadLetterName) {
+          message.application_properties ??= {}
+          message.application_properties["DeadLetterReason"] =
+            error.info["DeadLetterReason"]
+          message.application_properties["DeadLetterErrorDescription"] =
+            error.info["DeadLetterErrorDescription"]
+        }
+
         delete consumer.current_delivery[delivery.id]
 
         this._locked_messages.delete(message.message_id)
 
-        tryRedeliverMessage(message)
+        this.tryDeadletterMessage(message)
+        delivery.update(true)
       },
     }
 

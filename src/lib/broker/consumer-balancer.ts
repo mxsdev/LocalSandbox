@@ -59,7 +59,6 @@ export class BrokerConsumerBalancer {
 
   deliverMessagesToQueue(
     queueId: QualifiedQueueId | string,
-    delivery: Delivery,
     ...message: ParsedTypedRheaMessageWithId[]
   ): BufferLikeEncodedLong[] {
     // TODO: handle when queue is deleted more gracefully
@@ -82,9 +81,6 @@ export class BrokerConsumerBalancer {
     })
 
     this.getOrCreate(queue.id).scheduleMessages(...messages)
-
-    // TODO: should this be delayed until the message is successfully consumed e2e?
-    delivery.accept()
 
     const sequence_numbers = messages.map(
       (m) => m.message_annotations[Constants.sequenceNumber],
@@ -113,7 +109,7 @@ export class BrokerConsumerBalancer {
     if (this.queues[queueId]) {
       return this.queues[queueId]
     } else {
-      const queue = new BrokerQueue(this.store, queueId, this.logger)
+      const queue = new BrokerQueue(this.store, queueId, this.logger, this)
       this.queues[queueId] = queue
       return queue
     }

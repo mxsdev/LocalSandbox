@@ -276,7 +276,6 @@ export class AzureServiceBusBroker extends BrokerServer {
                 const sequenceNumbers =
                   this.consumer_balancer.deliverMessagesToQueue(
                     queue,
-                    delivery,
                     ...parsed.data.body.messages.flatMap(
                       ({ message: buffer, "message-id": mid }) =>
                         parseBatchOrMessage(buffer).map((v) => {
@@ -342,12 +341,12 @@ export class AzureServiceBusBroker extends BrokerServer {
 
           this.consumer_balancer.deliverMessagesToQueue(
             queue,
-            delivery,
             ...messages_to_enqueue.map((m) => {
               m["message_id"] ??= generate_uuid()
               return m as typeof m & { message_id: string }
             }),
           )
+          delivery.accept()
         }
       }
     } catch (e: any) {
