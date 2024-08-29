@@ -20,6 +20,8 @@ import { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import { getQueueFromStoreOrThrow } from "./util.js"
 import { Constants } from "@azure/core-amqp"
 import { Deque } from "@datastructures-js/deque"
+import { z } from "zod"
+import Long from "long"
 
 export type BrokerStore = IntegrationStore<typeof azure_routes>
 
@@ -76,9 +78,21 @@ export class AzureServiceBusBroker extends BrokerServer {
     connection,
     session,
   }: BrokerMessageEvent): Promise<void> {
-    // perform initial handshake
-    if (message.reply_to) {
-      try {
+    console.log(message)
+
+    const operation = message.application_properties?.["operation"]
+
+    try {
+      const respondSuccess = (consumer: Sender, body?: any) =>
+        consumer.send({
+          correlation_id: message.message_id,
+          body,
+          application_properties: {
+            "status-code": 200,
+          },
+        })
+
+      if (message.reply_to && operation === Constants.operationPutToken) {
         const consumer = this.cbs_senders[message.reply_to]
         if (!consumer) {
           this.logger?.error(
@@ -88,62 +102,7 @@ export class AzureServiceBusBroker extends BrokerServer {
           throw new Error("Could not reply to queue consumer")
         }
 
-        if (
-          message.application_properties?.["operation"] ===
-          "com.microsoft:schedule-message"
-        ) {
-          const queue = this.link_queue.get(receiver)
-
-          if (!queue) {
-            this.logger?.error(
-              "Could not find queue for receiver, did the handshake go through?",
-            )
-            throw new Error(
-              "Could not find queue for receiver, did the handshake go through?",
-            )
-          }
-
-          this.logger?.debug(
-            {
-              reply_to: message.reply_to,
-              queue_name: queue.queue_name,
-              properties: message.application_properties,
-              receiver: receiver.name,
-            },
-            "Accepting scheduled message",
-          )
-
-          const { messages } = message.body as {
-            messages: { message: Buffer; "message-id": string }[]
-          }
-
-          this.consumer_balancer.deliverMessagesToQueue(
-            queue,
-            delivery,
-            ...messages.flatMap(({ message: buffer, "message-id": mid }) =>
-              parseBatchOrMessage(buffer).map((v) => {
-                v["message_id"] ??= mid ?? generate_uuid()
-                return v as typeof v & { message_id: string }
-              }),
-            ),
-          )
-
-          delivery.accept()
-
-          consumer.send({
-            correlation_id: message.message_id,
-            body: {
-              // TODO: does this need to be implemented when sequence number
-              // support is added?
-              [Constants.sequenceNumbers]: [],
-            },
-            application_properties: {
-              "status-code": 200,
-            },
-          })
-
-          return
-        }
+        // perform initial handshake
 
         const sb_connection_string = message.application_properties?.["name"]
 
@@ -205,57 +164,157 @@ export class AzureServiceBusBroker extends BrokerServer {
         )
 
         delivery.accept()
+        respondSuccess(consumer, "Accepted")
+      } else {
+        if (message.reply_to && operation) {
+          const consumer = this.cbs_senders[message.reply_to]
+          if (!consumer) {
+            this.logger?.error(
+              { reply_to: message.reply_to },
+              "Could not reply to queue consumer",
+            )
+            throw new Error("Could not reply to queue consumer")
+          }
 
-        consumer.send({
-          correlation_id: message.message_id,
-          body: "Accepted",
-          application_properties: {
-            "status-code": 200,
-          },
-        })
-      } catch (e: any) {
-        delivery.reject({ description: e.message })
+          const parsed = z
+            .discriminatedUnion("operation", [
+              z.object({
+                operation: z.literal(Constants.operations.scheduleMessage),
+                body: z.object({
+                  messages: z.array(
+                    z.object({
+                      message: z.instanceof(Buffer),
+                      [Constants.messageIdMapKey]: z.string(),
+                    }),
+                  ),
+                }),
+              }),
+              z.object({
+                operation: z.literal(
+                  Constants.operations.cancelScheduledMessage,
+                ),
+                body: z.object({
+                  [Constants.sequenceNumbers]: z.number().array(),
+                }),
+              }),
+            ])
+            .safeParse({
+              operation,
+              body: message.body,
+            })
+
+          if (!parsed.success) {
+            this.logger?.warn(
+              { err: parsed.error.format() },
+              `Failed to parse message operation "${operation}"`,
+            )
+            return
+          }
+
+          const queue = this.link_queue.get(receiver)
+
+          if (!queue) {
+            this.logger?.error(
+              "Could not find queue for receiver, did the handshake go through?",
+            )
+            throw new Error(
+              "Could not find queue for receiver, did the handshake go through?",
+            )
+          }
+
+          this.logger?.debug(
+            {
+              reply_to: message.reply_to,
+              queue_name: queue.queue_name,
+              properties: message.application_properties,
+              receiver: receiver.name,
+            },
+            `Performing operation ${parsed.data.operation}...`,
+          )
+
+          switch (parsed.data.operation) {
+            case Constants.operations.scheduleMessage:
+              {
+                const sequenceNumbers =
+                  this.consumer_balancer.deliverMessagesToQueue(
+                    queue,
+                    delivery,
+                    ...parsed.data.body.messages.flatMap(
+                      ({ message: buffer, "message-id": mid }) =>
+                        parseBatchOrMessage(buffer).map((v) => {
+                          v["message_id"] ??= mid ?? generate_uuid()
+                          return v as typeof v & { message_id: string }
+                        }),
+                    ),
+                  )
+
+                delivery.accept()
+                respondSuccess(consumer, {
+                  // TODO!!
+                  [Constants.sequenceNumbers]: sequenceNumbers,
+                })
+              }
+              break
+
+            case Constants.operations.cancelScheduledMessage:
+              {
+                const sequenceNumbers =
+                  parsed.data.body[Constants.sequenceNumbers]
+
+                for (const sequenceNumber of sequenceNumbers) {
+                  if (
+                    !this.consumer_balancer.cancelScheduledMessage(
+                      queue,
+                      new Long(sequenceNumber),
+                    )
+                  ) {
+                    this.logger?.warn(
+                      `Tried to schedule sequence ${sequenceNumber} which was not found!`,
+                    )
+                  }
+                }
+
+                delivery.accept()
+                respondSuccess(consumer)
+              }
+              break
+          }
+        } else {
+          const queue = this.link_queue.get(receiver)
+
+          if (!queue) {
+            this.logger?.error(
+              "Could not find queue for receiver, did the handshake go through?",
+            )
+            throw new Error(
+              "Could not find queue for receiver, did the handshake go through?",
+            )
+          }
+
+          const parsed_message = parseRheaMessage(message)
+          const messages_to_enqueue = parseBatchOrMessage(parsed_message)
+
+          this.logger?.debug(
+            {
+              receiver: receiver.name,
+              queue_name: queue.queue_name,
+              num_messages: messages_to_enqueue.length,
+            },
+            "delivering message batch",
+          )
+
+          this.consumer_balancer.deliverMessagesToQueue(
+            queue,
+            delivery,
+            ...messages_to_enqueue.map((m) => {
+              m["message_id"] ??= generate_uuid()
+              return m as typeof m & { message_id: string }
+            }),
+          )
+        }
       }
-
-      return
-    }
-
-    try {
-      const queue = this.link_queue.get(receiver)
-
-      if (!queue) {
-        this.logger?.error(
-          "Could not find queue for receiver, did the handshake go through?",
-        )
-        throw new Error(
-          "Could not find queue for receiver, did the handshake go through?",
-        )
-      }
-
-      const parsed_message = parseRheaMessage(message)
-      const messages_to_enqueue = parseBatchOrMessage(parsed_message)
-
-      this.logger?.debug(
-        {
-          receiver: receiver.name,
-          queue_name: queue.queue_name,
-          num_messages: messages_to_enqueue.length,
-        },
-        "delivering message batch",
-      )
-
-      this.consumer_balancer.deliverMessagesToQueue(
-        queue,
-        delivery,
-        ...messages_to_enqueue.map((m) => {
-          m["message_id"] ??= generate_uuid()
-          return m as typeof m & { message_id: string }
-        }),
-      )
     } catch (e: any) {
-      delivery.reject({
-        description: e.message,
-      })
+      delivery.reject({ description: e.message })
     }
   }
 

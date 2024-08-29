@@ -4,6 +4,7 @@ import { Logger } from "pino"
 import { Constants } from "@azure/core-amqp"
 import { BrokerStore } from "./broker.js"
 import { getQueueFromStoreOrThrow } from "./util.js"
+import Long from "long"
 
 interface QueueConsumerDeliveryInfo<M> {
   delivery: Delivery
@@ -16,11 +17,16 @@ interface QueueConsumer<M> {
   listeners: Partial<Record<SenderEvents, (...args: any[]) => void>>
 }
 
-export class BrokerQueue<M extends Message & { message_id: string }> {
+export class BrokerQueue<
+  M extends Message & {
+    message_id: string
+    message_annotations: { [K in (typeof Constants)["sequenceNumber"]]: Long }
+  },
+> {
   _messages = new Deque<M>()
   _locked_messages = new Map<string, M>()
 
-  private timeouts: NodeJS.Timeout[] = []
+  private timeouts: Record<string, NodeJS.Timeout> = {}
 
   private consumers: Record<string, QueueConsumer<M>> = {}
 
@@ -72,12 +78,12 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
         scheduled_enqueued_time &&
         scheduled_enqueued_time.getTime() > Date.now()
       ) {
-        this.timeouts.push(
-          setTimeout(() => {
-            this.enqueue(message)
-            this.tryFlush()
-          }, scheduled_enqueued_time.getTime() - Date.now()),
-        )
+        this.timeouts[
+          message.message_annotations["x-opt-sequence-number"].toString()
+        ] = setTimeout(() => {
+          this.enqueue(message)
+          this.tryFlush()
+        }, scheduled_enqueued_time.getTime() - Date.now())
       } else {
         messages_for_immediate_delivery.push(message)
       }
@@ -85,6 +91,17 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
 
     this.enqueue(...messages_for_immediate_delivery)
     this.tryFlush()
+  }
+
+  cancelScheduledMessage(sequence_number: Long): boolean {
+    const existing_timeout = this.timeouts[sequence_number.toString()]
+
+    if (!existing_timeout) {
+      return false
+    }
+
+    clearTimeout(existing_timeout)
+    return true
   }
 
   scheduleMessagesInFront(...message: M[]) {
@@ -238,7 +255,7 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
   }
 
   close() {
-    this.timeouts.forEach(clearTimeout)
+    Object.values(this.timeouts).forEach(clearTimeout)
   }
 
   private tryFlush() {
@@ -259,8 +276,6 @@ export class BrokerQueue<M extends Message & { message_id: string }> {
 
       // TODO: check queue lock mode?
       this._locked_messages.set(message.message_id, message)
-
-      message.message_annotations ??= {}
 
       // From: azure-sdk-for-js/sdk/servicebus/service-bus/src/serviceBusMessage.ts:602
       //

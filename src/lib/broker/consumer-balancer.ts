@@ -12,9 +12,19 @@ import {
   ParsedTypedRheaMessageWithId,
 } from "../amqp/parse-message.js"
 import objectHash from "object-hash"
+import Long from "long"
+import { Constants } from "@azure/core-amqp"
 
 export class BrokerConsumerBalancer {
-  private queues: Record<string, BrokerQueue<ParsedTypedRheaMessageWithId>> = {}
+  private queues: Record<
+    string,
+    BrokerQueue<
+      ParsedTypedRheaMessageWithId & {
+        message_annotations: { [Constants.sequenceNumber]: Long }
+      }
+    >
+  > = {}
+  private last_sequence_number = new Long(0)
 
   constructor(
     private readonly store: BrokerStore,
@@ -44,14 +54,38 @@ export class BrokerConsumerBalancer {
     queueId: QualifiedQueueId | string,
     delivery: Delivery,
     ...message: ParsedTypedRheaMessageWithId[]
-  ) {
+  ): Long[] {
     // TODO: handle when queue is deleted more gracefully
     const queue = this.getQueueFromStoreOrThrow(queueId)
 
-    this.getOrCreate(queue.id).scheduleMessages(...message)
+    const messages = message.map((m) => {
+      const sequence_number = this.last_sequence_number
+      this.last_sequence_number = this.last_sequence_number.add(1)
+
+      m["message_annotations"] = {
+        ...m["message_annotations"],
+        [Constants.sequenceNumber]: sequence_number,
+      }
+      return m as typeof m & {
+        message_annotations: { [Constants.sequenceNumber]: Long }
+      }
+    })
+
+    this.getOrCreate(queue.id).scheduleMessages(...messages)
 
     // TODO: should this be delayed until the message is successfully consumed e2e?
     delivery.accept()
+
+    return messages.map((m) => m.message_annotations[Constants.sequenceNumber])
+  }
+
+  cancelScheduledMessage(
+    queueId: QualifiedQueueId | string,
+    sequence_number: Long,
+  ) {
+    return this.getOrCreate(
+      this.getQueueFromStoreOrThrow(queueId).id,
+    ).cancelScheduledMessage(sequence_number)
   }
 
   remove(sender: Sender) {
