@@ -14,17 +14,24 @@ import {
 import objectHash from "object-hash"
 import Long from "long"
 import { Constants } from "@azure/core-amqp"
+import {
+  BufferLikeEncodedLong,
+  unserializedLongToArrayLike,
+  unserializedLongToBufferLike,
+} from "../util/long.js"
 
 export class BrokerConsumerBalancer {
   private queues: Record<
     string,
     BrokerQueue<
       ParsedTypedRheaMessageWithId & {
-        message_annotations: { [Constants.sequenceNumber]: Long }
+        message_annotations: {
+          [Constants.sequenceNumber]: BufferLikeEncodedLong
+        }
       }
     >
   > = {}
-  private last_sequence_number = new Long(0)
+  private next_sequence_number = new Long(0)
 
   constructor(
     private readonly store: BrokerStore,
@@ -54,20 +61,23 @@ export class BrokerConsumerBalancer {
     queueId: QualifiedQueueId | string,
     delivery: Delivery,
     ...message: ParsedTypedRheaMessageWithId[]
-  ): Long[] {
+  ): BufferLikeEncodedLong[] {
     // TODO: handle when queue is deleted more gracefully
     const queue = this.getQueueFromStoreOrThrow(queueId)
 
     const messages = message.map((m) => {
-      const sequence_number = this.last_sequence_number
-      this.last_sequence_number = this.last_sequence_number.add(1)
+      const sequence_number = this.next_sequence_number
+      this.next_sequence_number = this.next_sequence_number.add(1)
 
       m["message_annotations"] = {
         ...m["message_annotations"],
-        [Constants.sequenceNumber]: sequence_number,
+        [Constants.sequenceNumber]:
+          unserializedLongToBufferLike.parse(sequence_number),
       }
       return m as typeof m & {
-        message_annotations: { [Constants.sequenceNumber]: Long }
+        message_annotations: {
+          [Constants.sequenceNumber]: BufferLikeEncodedLong
+        }
       }
     })
 
@@ -76,7 +86,13 @@ export class BrokerConsumerBalancer {
     // TODO: should this be delayed until the message is successfully consumed e2e?
     delivery.accept()
 
-    return messages.map((m) => m.message_annotations[Constants.sequenceNumber])
+    const sequence_numbers = messages.map(
+      (m) => m.message_annotations[Constants.sequenceNumber],
+    )
+
+    this.logger?.debug({ sequence_numbers }, "assigned sequence numbers")
+
+    return sequence_numbers
   }
 
   cancelScheduledMessage(

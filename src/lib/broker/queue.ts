@@ -5,6 +5,7 @@ import { Constants } from "@azure/core-amqp"
 import { BrokerStore } from "./broker.js"
 import { getQueueFromStoreOrThrow } from "./util.js"
 import Long from "long"
+import { BufferLikeEncodedLong, serializedLong } from "../util/long.js"
 
 interface QueueConsumerDeliveryInfo<M> {
   delivery: Delivery
@@ -20,7 +21,9 @@ interface QueueConsumer<M> {
 export class BrokerQueue<
   M extends Message & {
     message_id: string
-    message_annotations: { [K in (typeof Constants)["sequenceNumber"]]: Long }
+    message_annotations: {
+      [K in (typeof Constants)["sequenceNumber"]]: BufferLikeEncodedLong
+    }
   },
 > {
   _messages = new Deque<M>()
@@ -79,7 +82,9 @@ export class BrokerQueue<
         scheduled_enqueued_time.getTime() > Date.now()
       ) {
         this.timeouts[
-          message.message_annotations["x-opt-sequence-number"].toString()
+          serializedLong
+            .parse(message.message_annotations["x-opt-sequence-number"])
+            .toString()
         ] = setTimeout(() => {
           this.enqueue(message)
           this.tryFlush()
