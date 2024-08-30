@@ -126,3 +126,6 @@ export const parseRheaMessageBody = (
     return message.body as JsonValue
   }
 }
+
+export const encodeRheaMessage = (message: ParsedTypedRheaMessage) =>
+  rhea.message.encode(message)

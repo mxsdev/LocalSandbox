@@ -57,6 +57,16 @@ export class BrokerConsumerBalancer {
     this.addSenderToQueue(sender, queue.id)
   }
 
+  peekMessageFromQueue(
+    queueId: QualifiedQueueId | string,
+    messageCount: number,
+  ) {
+    // TODO: handle when queue is deleted more gracefully
+    const queue = this.getQueueFromStoreOrThrow(queueId)
+
+    return this.getOrCreate(queue.id).peekMessages(messageCount)
+  }
+
   deliverMessagesToQueue(
     queueId: QualifiedQueueId | string,
     ...message: ParsedTypedRheaMessageWithId[]

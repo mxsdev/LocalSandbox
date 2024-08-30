@@ -1,4 +1,8 @@
-import { parseBatchOrMessage, parseRheaMessage } from "../amqp/parse-message.js"
+import {
+  encodeRheaMessage,
+  parseBatchOrMessage,
+  parseRheaMessage,
+} from "../amqp/parse-message.js"
 import type { azure_routes } from "../integration/azure/routes.js"
 import type { IntegrationStore } from "../integration/integration.js"
 import {
@@ -192,6 +196,13 @@ export class AzureServiceBusBroker extends BrokerServer {
                 }),
               }),
               z.object({
+                operation: z.literal(Constants.operations.peekMessage),
+                body: z.object({
+                  [Constants.fromSequenceNumber]: serializedLong,
+                  [Constants.messageCount]: z.number(),
+                }),
+              }),
+              z.object({
                 operation: z.literal(
                   BrokerConstants.debug.operations.setSequenceNumber,
                 ),
@@ -266,6 +277,7 @@ export class AzureServiceBusBroker extends BrokerServer {
               queue_name: queue.queue_name,
               properties: message.application_properties,
               receiver: receiver.name,
+              body: message.body,
             },
             `Performing operation ${parsed.data.operation}...`,
           )
@@ -312,6 +324,36 @@ export class AzureServiceBusBroker extends BrokerServer {
 
                 delivery.accept()
                 respondSuccess(consumer)
+              }
+              break
+
+            case Constants.operations.peekMessage:
+              {
+                const {
+                  [Constants.fromSequenceNumber]: sequenceNumber,
+                  // TODO: do we need to correlate w/ sequence number and "replay" certain messages?
+                  [Constants.messageCount]: messageCount,
+                } = parsed.data.body
+
+                const peekedMessages =
+                  this.consumer_balancer.peekMessageFromQueue(
+                    queue,
+                    messageCount,
+                  )
+
+                this.logger?.debug(
+                  {
+                    peekedMessages,
+                  },
+                  "peeking messages...",
+                )
+
+                delivery.accept()
+                respondSuccess(consumer, {
+                  messages: peekedMessages.map((m) => ({
+                    message: encodeRheaMessage(m),
+                  })),
+                })
               }
               break
           }

@@ -131,6 +131,14 @@ export class BrokerQueue<
     this.tryFlush()
   }
 
+  peekMessages(messageCount: number) {
+    // TODO: introduce more efficient implementation...
+    return this._messages
+      .toArray()
+      .slice(this._messages.size() - messageCount, this._messages.size())
+      .reverse()
+  }
+
   cancelScheduledMessage(sequence_number: Long): boolean {
     const existing_timeout = this.timeouts[sequence_number.toString()]
 
