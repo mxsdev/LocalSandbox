@@ -175,6 +175,10 @@ export class AzureServiceBusBroker extends BrokerServer {
         respondSuccess(consumer, "Accepted")
       } else {
         if (operation) {
+          const serializedLockToken = z
+            .instanceof(Buffer)
+            .transform((b) => unreorderLockToken(b))
+            .or(z.string().uuid())
           const parsed = z
             .discriminatedUnion("operation", [
               z.object({
@@ -216,14 +220,16 @@ export class AzureServiceBusBroker extends BrokerServer {
                 operation: z.literal(Constants.operations.updateDisposition),
                 associatedLinkName: z.string(),
                 body: z.object({
-                  [Constants.lockTokens]: z.array(
-                    z
-                      .instanceof(Buffer)
-                      .transform((b) => unreorderLockToken(b))
-                      .or(z.string()),
-                  ),
+                  [Constants.lockTokens]: serializedLockToken.array(),
                   // TODO: verify other disposition statuses...
                   [Constants.dispositionStatus]: z.enum(["completed"]),
+                }),
+              }),
+              z.object({
+                operation: z.literal(Constants.operations.renewLock),
+                associatedLinkName: z.string(),
+                body: z.object({
+                  [Constants.lockTokens]: serializedLockToken.array(),
                 }),
               }),
               z.object({
@@ -414,13 +420,6 @@ export class AzureServiceBusBroker extends BrokerServer {
                   associatedLinkName,
                 } = parsed.data
 
-                console.log({
-                  lockTokens,
-                  dispositionStatus,
-                  queue: queue.queue_name,
-                  associatedLinkName: parsed.data.associatedLinkName,
-                })
-
                 lockTokens.forEach((tag) => {
                   this.consumer_balancer.updateConsumerDisposition(
                     queue,
@@ -434,9 +433,34 @@ export class AzureServiceBusBroker extends BrokerServer {
               }
               break
 
+            case Constants.operations.renewLock:
+              {
+                const {
+                  body: { [Constants.lockTokens]: lockTokens },
+                  associatedLinkName,
+                } = parsed.data
+
+                lockTokens.forEach((tag) => {
+                  this.consumer_balancer.renewLock(
+                    queue,
+                    { name: associatedLinkName },
+                    { tag },
+                  )
+                })
+
+                respondSuccess(consumer, {
+                  // TODO: populate this...
+                  expirations: [],
+                })
+              }
+              break
+
             default:
               {
-                this.logger?.error(`Unhandled operation ${operation}`)
+                this.logger?.error(
+                  { message },
+                  `Unhandled operation ${operation}`,
+                )
               }
               break
           }

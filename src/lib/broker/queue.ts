@@ -231,6 +231,44 @@ export class BrokerQueue<
     }
   }
 
+  renewLock(sender: SenderName, delivery_tag: DeliveryTag) {
+    const consumer = this.consumers[sender.name]
+    if (!consumer) {
+      this.logger?.error(
+        { sender: sender.name, consumer_ids: Object.keys(this.consumers) },
+        "Could not find consumer for lock renewal",
+      )
+      return
+    }
+
+    const delivery_info = consumer.current_delivery.get(delivery_tag)
+    if (!delivery_info) {
+      this.logger?.error(
+        {
+          sender: sender.name,
+          tags: Object.keys(consumer.current_delivery["_deliveries"]),
+        },
+        "Could not find delivery for lock renewal",
+      )
+      return
+    }
+
+    const locked_message = this.locked_messages.get(
+      delivery_info.message.message_id,
+    )
+    if (!locked_message) {
+      this.logger?.error(
+        {
+          sender: sender.name,
+        },
+        "Could not find locked message for lock renewal",
+      )
+      return
+    }
+
+    locked_message.timeout.refresh()
+  }
+
   updateConsumerDisposition(
     sender: SenderName,
     delivery_tag: DeliveryTag,
@@ -252,10 +290,8 @@ export class BrokerQueue<
         {
           sender: sender.name,
           tags: Object.keys(consumer.current_delivery["_deliveries"]),
-          // delivery_tag: delivery_tag.tag.toString(),
-          // delivery_tag: Buffer.from(delivery_tag.tag),
         },
-        "Expected to find delivery...",
+        "Could not find delivery for disposition update",
       )
       return
     }
