@@ -3,11 +3,11 @@ import delay from "delay"
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
-  "can lock for a duration",
+  "can renew lock",
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 
-    const lockDurationMs = 250
+    const lockDurationMs = 500
 
     const queue = await createQueue("queue", {
       lockDuration: Temporal.Duration.from({
@@ -32,23 +32,28 @@ fixturedTest(
     expect(message!.body).toBe("hello world!")
 
     {
-      const messages = await receiver.receiveMessages(1, {
-        maxWaitTimeInMs: 0,
-      })
+      await delay(lockDurationMs / 2)
 
-      expect(messages).toHaveLength(0)
+      {
+        const messages = await receiver.receiveMessages(1, {
+          maxWaitTimeInMs: 0,
+        })
+
+        expect(messages).toHaveLength(0)
+      }
+
+      await receiver.renewMessageLock(message!)
 
       await delay(lockDurationMs)
 
-      // completing the message should not do anything
-      await receiver.completeMessage(message!)
-    }
+      {
+        const messages = await receiver.receiveMessages(1, {
+          maxWaitTimeInMs: 0,
+        })
 
-    {
-      const [message] = await receiver.receiveMessages(1, {
-        maxWaitTimeInMs: 0,
-      })
-      expect(message!.body).toBe("hello world!")
+        expect(messages).toHaveLength(1)
+        expect(messages[0]).toMatchObject({ body: "hello world!" })
+      }
     }
   },
 )

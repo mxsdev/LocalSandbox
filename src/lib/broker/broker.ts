@@ -31,6 +31,7 @@ import {
   unserializedLongToBufferLike,
 } from "../util/long.js"
 import { BrokerConstants } from "./constants.js"
+import { unreorderLockToken } from "../util/service-bus.js"
 
 export type BrokerStore = IntegrationStore<typeof azure_routes>
 
@@ -174,6 +175,10 @@ export class AzureServiceBusBroker extends BrokerServer {
         respondSuccess(consumer, "Accepted")
       } else {
         if (operation) {
+          const serializedLockToken = z
+            .instanceof(Buffer)
+            .transform((b) => unreorderLockToken(b))
+            .or(z.string().uuid())
           const parsed = z
             .discriminatedUnion("operation", [
               z.object({
@@ -212,6 +217,22 @@ export class AzureServiceBusBroker extends BrokerServer {
                 }),
               }),
               z.object({
+                operation: z.literal(Constants.operations.updateDisposition),
+                associatedLinkName: z.string(),
+                body: z.object({
+                  [Constants.lockTokens]: serializedLockToken.array(),
+                  // TODO: verify other disposition statuses...
+                  [Constants.dispositionStatus]: z.enum(["completed"]),
+                }),
+              }),
+              z.object({
+                operation: z.literal(Constants.operations.renewLock),
+                associatedLinkName: z.string(),
+                body: z.object({
+                  [Constants.lockTokens]: serializedLockToken.array(),
+                }),
+              }),
+              z.object({
                 operation: z.literal(
                   BrokerConstants.debug.operations.setSequenceNumber,
                 ),
@@ -222,6 +243,8 @@ export class AzureServiceBusBroker extends BrokerServer {
             ])
             .safeParse({
               operation,
+              associatedLinkName:
+                message.application_properties?.[Constants.associatedLinkName],
               body: message.body,
             })
 
@@ -286,7 +309,7 @@ export class AzureServiceBusBroker extends BrokerServer {
               queue_name: queue.queue_name,
               properties: message.application_properties,
               receiver: receiver.name,
-              body: message.body,
+              // body: message.body,
             },
             `Performing operation ${parsed.data.operation}...`,
           )
@@ -387,6 +410,51 @@ export class AzureServiceBusBroker extends BrokerServer {
               }
               break
 
+            case Constants.operations.updateDisposition:
+              {
+                const {
+                  body: {
+                    [Constants.lockTokens]: lockTokens,
+                    [Constants.dispositionStatus]: dispositionStatus,
+                  },
+                  associatedLinkName,
+                } = parsed.data
+
+                lockTokens.forEach((tag) => {
+                  this.consumer_balancer.updateConsumerDisposition(
+                    queue,
+                    { name: associatedLinkName },
+                    { tag },
+                    dispositionStatus,
+                  )
+                })
+
+                respondSuccess(consumer, {})
+              }
+              break
+
+            case Constants.operations.renewLock:
+              {
+                const {
+                  body: { [Constants.lockTokens]: lockTokens },
+                  associatedLinkName,
+                } = parsed.data
+
+                lockTokens.forEach((tag) => {
+                  this.consumer_balancer.renewLock(
+                    queue,
+                    { name: associatedLinkName },
+                    { tag },
+                  )
+                })
+
+                respondSuccess(consumer, {
+                  // TODO: populate this...
+                  expirations: [],
+                })
+              }
+              break
+
             default:
               {
                 this.logger?.error(
@@ -469,6 +537,8 @@ export class AzureServiceBusBroker extends BrokerServer {
 
   override async onSenderClose({ sender }: BrokerSenderEvent): Promise<void> {
     this.link_queue.delete(sender)
+
+    this.logger?.debug({ sender: sender.name }, "sender closed")
 
     if (sender.name in this.cbs_senders) {
       delete this.cbs_senders[sender.name]

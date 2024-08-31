@@ -4,7 +4,7 @@ import type {
   QualifiedNamespaceId,
   QualifiedQueueId,
 } from "./broker.js"
-import { BrokerQueue } from "./queue.js"
+import { BrokerQueue, DeliveryTag, SenderName } from "./queue.js"
 import { getPeerQueue, getQueueFromStoreOrThrow } from "./util.js"
 import { Logger } from "pino"
 import {
@@ -40,6 +40,24 @@ export class BrokerConsumerBalancer {
 
   removeConsumers(where: (consumer: Sender) => boolean) {
     Object.values(this.queues).forEach((q) => q.removeConsumers(where))
+  }
+
+  renewLock(
+    queueId: QualifiedQueueId | string,
+    ...args: Parameters<BrokerQueue<any>["renewLock"]>
+  ) {
+    const queue = this.getQueueFromStoreOrThrow(queueId)
+    const broker_queue = this.getOrCreate(queue.id)
+    broker_queue.renewLock(...args)
+  }
+
+  updateConsumerDisposition(
+    queueId: QualifiedQueueId | string,
+    ...args: Parameters<BrokerQueue<any>["updateConsumerDisposition"]>
+  ) {
+    const queue = this.getQueueFromStoreOrThrow(queueId)
+    const broker_queue = this.getOrCreate(queue.id)
+    broker_queue.updateConsumerDisposition(...args)
   }
 
   add(
