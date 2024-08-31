@@ -48,7 +48,7 @@ export class BrokerConsumerBalancer {
   ) {
     const queue = this.getQueueFromStoreOrThrow(queueId)
     const broker_queue = this.getOrCreate(queue.id)
-    broker_queue.renewLock(...args)
+    return broker_queue.renewLock(...args)
   }
 
   updateConsumerDisposition(

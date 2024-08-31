@@ -440,17 +440,19 @@ export class AzureServiceBusBroker extends BrokerServer {
                   associatedLinkName,
                 } = parsed.data
 
-                lockTokens.forEach((tag) => {
-                  this.consumer_balancer.renewLock(
-                    queue,
-                    { name: associatedLinkName },
-                    { tag },
+                const expirations = lockTokens
+                  .map((tag) =>
+                    this.consumer_balancer.renewLock(
+                      queue,
+                      { name: associatedLinkName },
+                      { tag },
+                    ),
                   )
-                })
+                  .filter((x): x is Exclude<typeof x, undefined> => !!x)
 
                 respondSuccess(consumer, {
                   // TODO: populate this...
-                  expirations: [],
+                  expirations,
                 })
               }
               break

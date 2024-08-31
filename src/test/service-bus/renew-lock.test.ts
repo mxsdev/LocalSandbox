@@ -42,7 +42,10 @@ fixturedTest(
         expect(messages).toHaveLength(0)
       }
 
-      await receiver.renewMessageLock(message!)
+      const unlocked_at_date = await receiver.renewMessageLock(message!)
+      expect(
+        Math.abs(unlocked_at_date.getTime() - Date.now() - lockDurationMs),
+      ).toBeLessThanOrEqual(100)
 
       await delay(lockDurationMs)
 

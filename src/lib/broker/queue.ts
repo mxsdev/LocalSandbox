@@ -82,7 +82,7 @@ export class BrokerQueue<
   private deferred_messages = new Map<string, M>()
   private locked_messages = new Map<
     string,
-    { message: M; timeout: NodeJS.Timeout }
+    { message: M; timeout: NodeJS.Timeout; lock_duration_ms: number }
   >()
 
   private timeouts: Record<string, NodeJS.Timeout> = {}
@@ -267,6 +267,7 @@ export class BrokerQueue<
     }
 
     locked_message.timeout.refresh()
+    return Date.now() + locked_message.lock_duration_ms
   }
 
   updateConsumerDisposition(
@@ -492,6 +493,7 @@ export class BrokerQueue<
       // TODO: check queue lock mode?
       this.locked_messages.set(message.message_id, {
         message,
+        lock_duration_ms: lockDurationMs,
         timeout: setTimeout(() => {
           this.logger?.debug(
             {
