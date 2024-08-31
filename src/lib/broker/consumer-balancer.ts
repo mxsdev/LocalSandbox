@@ -42,6 +42,15 @@ export class BrokerConsumerBalancer {
     Object.values(this.queues).forEach((q) => q.removeConsumers(where))
   }
 
+  updateConsumerDisposition(
+    queueId: QualifiedQueueId | string,
+    ...args: Parameters<BrokerQueue<any>["updateConsumerDisposition"]>
+  ) {
+    const queue = this.getQueueFromStoreOrThrow(queueId)
+    const broker_queue = this.getOrCreate(queue.id)
+    broker_queue.updateConsumerDisposition(...args)
+  }
+
   add(
     qualifiedQueueId: QualifiedQueueId,
     sender: Sender,

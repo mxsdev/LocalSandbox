@@ -32,17 +32,22 @@ fixturedTest(
     expect(message!.body).toBe("hello world!")
 
     {
-      const [message] = await receiver.receiveMessages(1, {
+      const messages = await receiver.receiveMessages(1, {
         maxWaitTimeInMs: 0,
       })
 
-      expect(message).toBeUndefined()
+      expect(messages).toHaveLength(0)
+
+      await delay(lockDurationMs)
+
+      // completing the message should not do anything
+      await receiver.completeMessage(message!)
     }
 
-    await delay(lockDurationMs)
-
     {
-      const [message] = await receiver.receiveMessages(1)
+      const [message] = await receiver.receiveMessages(1, {
+        maxWaitTimeInMs: 0,
+      })
       expect(message!.body).toBe("hello world!")
     }
   },

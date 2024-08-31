@@ -1,9 +1,9 @@
 import { Temporal } from "@js-temporal/polyfill"
-import { Delivery, generate_uuid, Message, Sender, SenderEvents } from "rhea"
+import { Delivery, Message, Sender, SenderEvents } from "rhea"
 import { Deque } from "@datastructures-js/deque"
 import { Logger } from "pino"
 import { Constants } from "@azure/core-amqp"
-import { BrokerStore, QualifiedQueueId } from "./broker.js"
+import { BrokerStore } from "./broker.js"
 import {
   getQualifiedQueueIdFromStoreQueue,
   getQueueFromStoreOrThrow,
@@ -11,16 +11,62 @@ import {
 import Long from "long"
 import { BufferLikeEncodedLong, serializedLong } from "../util/long.js"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
+import { uuidToString } from "../util/uuid.js"
 
 interface QueueConsumerDeliveryInfo<M> {
   delivery: Delivery
   message: M
 }
 
+export type DeliveryTag = Pick<Delivery, "tag"> & Partial<Pick<Delivery, "id">>
+export type SenderName = Pick<Sender, "name">
+
+class DeliveryMap<T> {
+  private _deliveries: Record<string, T> = {}
+
+  get length() {
+    return Object.keys(this._deliveries).length
+  }
+
+  constructor(private logger: Logger | undefined) {}
+
+  private deliveryKey(delivery: DeliveryTag) {
+    return uuidToString.parse(delivery.tag)
+  }
+
+  get(delivery: DeliveryTag) {
+    return this._deliveries[this.deliveryKey(delivery)]
+  }
+
+  store(delivery: DeliveryTag, val: T) {
+    const key = this.deliveryKey(delivery)
+    if (this._deliveries[key] != null) {
+      this.logger?.warn(
+        { key, delivery_id: delivery.id },
+        "Stored delivery overwrote another, this should never happen!!",
+      )
+    }
+    this._deliveries[key] = val
+  }
+
+  protected finish(delivery: Delivery) {
+    const res = this._deliveries[this.deliveryKey(delivery)]
+    if (!res) {
+      this.logger?.warn(
+        { delivery_id: delivery.id },
+        "Tried to finish delivery that does not exist, this should never happen!!",
+      )
+    }
+    delete this._deliveries[this.deliveryKey(delivery)]
+    return res
+  }
+}
+
 interface QueueConsumer<M> {
   sender: Sender
-  current_delivery: Record<string, QueueConsumerDeliveryInfo<M>>
+  current_delivery: DeliveryMap<QueueConsumerDeliveryInfo<M>>
   listeners: Partial<Record<SenderEvents, (...args: any[]) => void>>
+  schedule_for_deletion: boolean
 }
 
 export class BrokerQueue<
@@ -167,30 +213,120 @@ export class BrokerQueue<
     this.tryFlush()
   }
 
+  finishDelivery(
+    consumer: (typeof this.consumers)[number],
+    delivery: Delivery,
+  ) {
+    consumer.current_delivery["finish"](delivery)
+
+    if (
+      consumer.current_delivery.length === 0 &&
+      consumer.schedule_for_deletion
+    ) {
+      this.logger?.debug(
+        { sender: consumer.sender.name },
+        "Deleting consumer since all deliveries are completed",
+      )
+      delete this.consumers[consumer.sender.name]
+    }
+  }
+
+  updateConsumerDisposition(
+    sender: SenderName,
+    delivery_tag: DeliveryTag,
+    disposition: "completed" | "abandoned" | "rejected",
+  ) {
+    const consumer = this.consumers[sender.name]
+    if (!consumer) {
+      this.logger?.error(
+        { sender: sender.name, consumer_ids: Object.keys(this.consumers) },
+        "Could not find consumer for disposition update",
+      )
+      return
+    }
+
+    const delivery_info = consumer.current_delivery.get(delivery_tag)
+
+    if (!delivery_info) {
+      this.logger?.error(
+        {
+          sender: sender.name,
+          tags: Object.keys(consumer.current_delivery["_deliveries"]),
+          // delivery_tag: delivery_tag.tag.toString(),
+          // delivery_tag: Buffer.from(delivery_tag.tag),
+        },
+        "Expected to find delivery...",
+      )
+      return
+    }
+
+    const { delivery, message } = delivery_info
+
+    switch (disposition) {
+      case "completed":
+        {
+          if (consumer.sender.rcv_settle_mode === 1) {
+            delivery.update(true)
+          }
+
+          this.locked_messages.delete(message.message_id)
+
+          this.finishDelivery(consumer, delivery)
+
+          this.tryFlush()
+        }
+        break
+
+      case "abandoned":
+        {
+          this.finishDelivery(consumer, delivery)
+
+          this.locked_messages.delete(message.message_id)
+
+          // take this as wanting to defer
+          if (delivery.remote_state?.["undeliverable_here"]) {
+            this.deferred_messages.set(
+              serializedLong
+                .parse(message.message_annotations[Constants.sequenceNumber])
+                .toString(),
+              message,
+            )
+          }
+
+          if (consumer.sender.rcv_settle_mode === 1) {
+            delivery.update(true)
+          }
+        }
+        break
+
+      case "rejected":
+        {
+          const error = delivery.remote_state?.["error"]
+
+          if (error?.condition === Constants.deadLetterName) {
+            message.application_properties ??= {}
+            message.application_properties["DeadLetterReason"] =
+              error.info["DeadLetterReason"]
+            message.application_properties["DeadLetterErrorDescription"] =
+              error.info["DeadLetterErrorDescription"]
+          }
+
+          this.finishDelivery(consumer, delivery)
+
+          this.locked_messages.delete(message.message_id)
+
+          this.tryDeadletterMessage(message)
+          delivery.update(true)
+        }
+        break
+    }
+  }
+
   addConsumer(sender: Sender) {
     this.logger?.debug(
       { sender: sender.name, queue_id: this.queue_id },
       "Registering sender",
     )
-
-    const retrieveConsumer = (delivery: Delivery) => {
-      const consumer = this.consumers[sender.name]
-
-      if (!consumer) {
-        this.logger?.error({ sender: sender.name }, "Could not find consumer")
-        return
-      }
-
-      if (!consumer.current_delivery[delivery.id]) {
-        this.logger?.error(
-          { sender: sender.name },
-          "Expected to find delivery...",
-        )
-        return
-      }
-
-      return { consumer, ...consumer.current_delivery[delivery.id] }
-    }
 
     const tryRedeliverMessage = (message: M) => {
       this.locked_messages.delete(message.message_id)
@@ -215,43 +351,9 @@ export class BrokerQueue<
       [SenderEvents.accepted]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug("sender accepted message")
 
-        const { consumer, delivery, message } =
-          retrieveConsumer(e.delivery) ?? {}
-        if (!consumer || !delivery || !message) return
-
-        if (consumer.sender.rcv_settle_mode === 1) {
-          delivery.update(true)
-        }
-
-        this.locked_messages.delete(message.message_id)
-
-        delete consumer.current_delivery[delivery.id]
-
-        this.tryFlush()
+        this.updateConsumerDisposition(e.sender, e.delivery, "completed")
       },
-      [SenderEvents.modified]: (e: { delivery: Delivery }) => {
-        const undeliverable_here =
-          e.delivery.remote_state?.["undeliverable_here"]
-        const delivery_failed = e.delivery.remote_state?.["delivery_failed"]
-        const message_annotations =
-          e.delivery.remote_state?.["message_annotations"]
-
-        this.logger?.debug(
-          { undeliverable_here, delivery_failed, message_annotations },
-          "sender modified message",
-        )
-
-        if (undeliverable_here) {
-          // TODO: implement this
-        }
-
-        if (delivery_failed) {
-          // TODO: implement this
-        }
-
-        // TODO: merge message annotations w/ existing ones
-      },
-      [SenderEvents.released]: (e: { delivery: Delivery }) => {
+      [SenderEvents.released]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug(
           {
             undeliverable_here: e.delivery.remote_state?.["undeliverable_here"],
@@ -261,72 +363,57 @@ export class BrokerQueue<
           "sender released message",
         )
 
-        const { consumer, delivery, message } =
-          retrieveConsumer(e.delivery) ?? {}
-        if (!consumer || !delivery || !message) return
-
-        delete consumer.current_delivery[delivery.id]
-        this.locked_messages.delete(message.message_id)
-
-        // take this as wanting to defer
-        if (e.delivery.remote_state?.["undeliverable_here"]) {
-          this.deferred_messages.set(
-            serializedLong
-              .parse(message.message_annotations[Constants.sequenceNumber])
-              .toString(),
-            message,
-          )
-        }
-
-        if (consumer.sender.rcv_settle_mode === 1) {
-          delivery.update(true)
-        }
+        this.updateConsumerDisposition(e.sender, e.delivery, "abandoned")
       },
       [SenderEvents.settled]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug("sender settled")
 
         this.tryFlush()
       },
-      [SenderEvents.rejected]: (e: { delivery: Delivery }) => {
+      [SenderEvents.rejected]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug(Object.keys(e), "sender rejected message")
 
-        const { consumer, delivery, message } =
-          retrieveConsumer(e.delivery) ?? {}
-        if (!consumer || !delivery || !message) return
-
-        const error = e.delivery.remote_state?.["error"]
-
-        if (error?.condition === Constants.deadLetterName) {
-          message.application_properties ??= {}
-          message.application_properties["DeadLetterReason"] =
-            error.info["DeadLetterReason"]
-          message.application_properties["DeadLetterErrorDescription"] =
-            error.info["DeadLetterErrorDescription"]
-        }
-
-        delete consumer.current_delivery[delivery.id]
-
-        this.locked_messages.delete(message.message_id)
-
-        this.tryDeadletterMessage(message)
-        delivery.update(true)
+        this.updateConsumerDisposition(e.sender, e.delivery, "rejected")
       },
     }
 
     Object.entries(listeners).forEach((args) => sender.addListener(...args))
 
-    this.consumers[sender.name] = { sender, listeners, current_delivery: {} }
+    this.consumers[sender.name] = {
+      sender,
+      listeners,
+      current_delivery: new DeliveryMap(this.logger),
+      schedule_for_deletion: false,
+    }
     this.tryFlush()
   }
 
   removeConsumer(sender: Sender) {
-    const consumer = this.consumers[sender.name]
-    if (consumer) {
-      Object.entries(consumer.listeners).forEach(
-        (args) => args[1] && consumer.sender.removeListener(...args),
-      )
+    this.logger?.debug({ sender: sender.name }, "Removing sender")
 
+    const consumer = this.consumers[sender.name]
+
+    if (!consumer) {
+      this.logger?.warn({ sender: sender.name }, "Could not find consumer")
+      return
+    }
+
+    Object.entries(consumer.listeners).forEach(
+      (args) => args[1] && consumer.sender.removeListener(...args),
+    )
+
+    if (consumer.current_delivery.length === 0) {
+      this.logger?.debug(
+        { sender: consumer.sender.name },
+        "Removing consumer from queue",
+      )
       delete this.consumers[sender.name]
+    } else {
+      this.logger?.debug(
+        { sender: consumer.sender.name },
+        "Scheduling consumer to be removed from queue",
+      )
+      consumer.schedule_for_deletion = true
     }
   }
 
@@ -379,7 +466,7 @@ export class BrokerQueue<
             "Unlocking message due to lock timeout!",
           )
 
-          delete consumer_copy.current_delivery[delivery.id]
+          this.finishDelivery(consumer_copy, delivery)
 
           this.locked_messages.delete(message.message_id)
           // TODO: check docs to see where this should be redelivered (front, back?)
@@ -400,6 +487,10 @@ export class BrokerQueue<
       // TODO: implement this properly
       message.message_annotations[Constants.lockedUntil] =
         +new Date().getTime() + lockDurationMs
+      // console.log(
+      //   "lock token",
+      //   message.message_annotations[Constants.lockTokenMapKey],
+      // )
 
       // TODO: timeout
       const delivery = consumer.sender.send(message)
@@ -408,12 +499,13 @@ export class BrokerQueue<
         {
           delivery_id: delivery.id,
           consumer: consumer.sender.name,
+          delivery_tag: Buffer.from(delivery.tag).length,
           // delivery: consumer.current_delivery?.delivery.id,
         },
         "Sent message",
       )
 
-      consumer.current_delivery[delivery.id] = { delivery, message }
+      consumer.current_delivery.store(delivery, { delivery, message })
     }
   }
 }
