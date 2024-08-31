@@ -15,6 +15,7 @@ import {
   sbQueueProperties,
 } from "../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/Queue.js"
 import { z } from "zod"
+import { Temporal } from "@js-temporal/polyfill"
 
 export const DEFAULT_SUBSCRIPTION_DISPLAY_NAME =
   "LocalSandbox Test Subscription"
@@ -103,10 +104,25 @@ export const azure_routes = createIntegration({
             properties: sbQueueProperties
               .omit({
                 maxDeliveryCount: true,
+                lockDuration: true,
               })
               .extend({
                 maxDeliveryCount:
                   sbQueueProperties.shape.maxDeliveryCount.default(10),
+                // TODO: enforce maximum....
+                lockDuration: z
+                  .string()
+                  .duration()
+                  .optional()
+                  .default("PT1M")
+                  .refine(
+                    (serialized) =>
+                      Temporal.Duration.from(serialized).total({
+                        unit: "minute",
+                      }) <= 5,
+                    // TODO: get this error message accurate to Azure
+                    "Lock duration cannot exceed 5 minutes",
+                  ),
               })
               .default({}),
           }),

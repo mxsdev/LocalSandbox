@@ -1,3 +1,5 @@
+import ms from "ms"
+import delay from "delay"
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
@@ -20,7 +22,7 @@ fixturedTest(
       schedule_at,
     )
 
-    await new Promise((res) => setTimeout(res, 100))
+    await delay(ms("100ms"))
 
     await sender.cancelScheduledMessages(msg)
 
