@@ -1,3 +1,4 @@
+import { Temporal } from "@js-temporal/polyfill"
 import { Delivery, generate_uuid, Message, Sender, SenderEvents } from "rhea"
 import { Deque } from "@datastructures-js/deque"
 import { Logger } from "pino"
@@ -33,7 +34,10 @@ export class BrokerQueue<
   private _messages = new Deque<M>()
 
   private deferred_messages = new Map<string, M>()
-  private locked_messages = new Map<string, M>()
+  private locked_messages = new Map<
+    string,
+    { message: M; timeout: NodeJS.Timeout }
+  >()
 
   private timeouts: Record<string, NodeJS.Timeout> = {}
 
@@ -336,10 +340,17 @@ export class BrokerQueue<
 
   close() {
     Object.values(this.timeouts).forEach(clearTimeout)
+    Object.values(this.locked_messages).forEach(({ timeout }) =>
+      clearTimeout(timeout),
+    )
   }
 
   private tryFlush() {
     let consumer: QueueConsumer<M> | undefined
+
+    const lockDurationMs = Temporal.Duration.from(
+      this.queue.properties.lockDuration,
+    ).total({ unit: "millisecond" })
 
     while (
       (consumer = Object.values(this.consumers).find(
@@ -353,9 +364,28 @@ export class BrokerQueue<
       ))
     ) {
       const message = this.dequeue()!
+      const consumer_copy = consumer
 
       // TODO: check queue lock mode?
-      this.locked_messages.set(message.message_id, message)
+      this.locked_messages.set(message.message_id, {
+        message,
+        timeout: setTimeout(() => {
+          this.logger?.debug(
+            {
+              delivery_id: delivery.id,
+              consumer: consumer_copy.sender.name,
+              message_id: message.message_id,
+            },
+            "Unlocking message due to lock timeout!",
+          )
+
+          delete consumer_copy.current_delivery[delivery.id]
+
+          this.locked_messages.delete(message.message_id)
+          // TODO: check docs to see where this should be redelivered (front, back?)
+          this.scheduleMessagesInFront(message)
+        }, lockDurationMs),
+      })
 
       // From: azure-sdk-for-js/sdk/servicebus/service-bus/src/serviceBusMessage.ts:602
       //
@@ -369,7 +399,7 @@ export class BrokerQueue<
 
       // TODO: implement this properly
       message.message_annotations[Constants.lockedUntil] =
-        +new Date().getTime() + 1000000000
+        +new Date().getTime() + lockDurationMs
 
       // TODO: timeout
       const delivery = consumer.sender.send(message)

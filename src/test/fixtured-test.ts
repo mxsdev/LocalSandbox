@@ -21,6 +21,8 @@ import { ServiceBusClient, ServiceBusClientOptions } from "@azure/service-bus"
 import { QualifiedNamespaceId } from "../lib/broker/broker.js"
 
 const getAzureContext = (onTestFinished: (cb: () => Promise<void>) => void) => {
+  const store = azure_routes["store"]
+
   const port = testPort
   const id = randomUUID()
   const endpoint = new URL(`https://127.0.0.1:${port}/azure`)
@@ -74,6 +76,7 @@ const getAzureContext = (onTestFinished: (cb: () => Promise<void>) => void) => {
     resource_client,
     location,
     sb_endpoint,
+    store,
 
     getSbClient: (
       {
