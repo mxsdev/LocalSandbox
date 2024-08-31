@@ -30,8 +30,10 @@ export class BrokerQueue<
     }
   },
 > {
-  _messages = new Deque<M>()
-  _locked_messages = new Map<string, M>()
+  private _messages = new Deque<M>()
+
+  private deferred_messages = new Map<string, M>()
+  private locked_messages = new Map<string, M>()
 
   private timeouts: Record<string, NodeJS.Timeout> = {}
 
@@ -63,6 +65,12 @@ export class BrokerQueue<
 
   private dequeue() {
     return this._messages.popBack()
+  }
+
+  consumeDeferredMessage(sequenceId: Long) {
+    const res = this.deferred_messages.get(sequenceId.toString())
+    this.deferred_messages.delete(sequenceId.toString())
+    return res
   }
 
   tryDeadletterMessage(message: M, reason?: string, description?: string) {
@@ -116,7 +124,7 @@ export class BrokerQueue<
       ) {
         this.timeouts[
           serializedLong
-            .parse(message.message_annotations["x-opt-sequence-number"])
+            .parse(message.message_annotations[Constants.sequenceNumber])
             .toString()
         ] = setTimeout(() => {
           this.enqueue(message)
@@ -181,7 +189,7 @@ export class BrokerQueue<
     }
 
     const tryRedeliverMessage = (message: M) => {
-      this._locked_messages.delete(message.message_id)
+      this.locked_messages.delete(message.message_id)
 
       message.delivery_count ??= 0
       message.delivery_count += 1
@@ -211,7 +219,7 @@ export class BrokerQueue<
           delivery.update(true)
         }
 
-        this._locked_messages.delete(message.message_id)
+        this.locked_messages.delete(message.message_id)
 
         delete consumer.current_delivery[delivery.id]
 
@@ -224,6 +232,11 @@ export class BrokerQueue<
         const message_annotations =
           e.delivery.remote_state?.["message_annotations"]
 
+        this.logger?.debug(
+          { undeliverable_here, delivery_failed, message_annotations },
+          "sender modified message",
+        )
+
         if (undeliverable_here) {
           // TODO: implement this
         }
@@ -233,27 +246,37 @@ export class BrokerQueue<
         }
 
         // TODO: merge message annotations w/ existing ones
-
-        this.logger?.debug(
-          { undeliverable_here, delivery_failed, message_annotations },
-          "sender modified",
-        )
       },
       [SenderEvents.released]: (e: { delivery: Delivery }) => {
-        this.logger?.debug("sender released message")
+        this.logger?.debug(
+          {
+            undeliverable_here: e.delivery.remote_state?.["undeliverable_here"],
+            message_annotations:
+              e.delivery.remote_state?.["message_annotations"],
+          },
+          "sender released message",
+        )
 
         const { consumer, delivery, message } =
           retrieveConsumer(e.delivery) ?? {}
         if (!consumer || !delivery || !message) return
 
         delete consumer.current_delivery[delivery.id]
-        this._locked_messages.delete(message.message_id)
+        this.locked_messages.delete(message.message_id)
+
+        // take this as wanting to defer
+        if (e.delivery.remote_state?.["undeliverable_here"]) {
+          this.deferred_messages.set(
+            serializedLong
+              .parse(message.message_annotations[Constants.sequenceNumber])
+              .toString(),
+            message,
+          )
+        }
 
         if (consumer.sender.rcv_settle_mode === 1) {
           delivery.update(true)
         }
-
-        tryRedeliverMessage(message)
       },
       [SenderEvents.settled]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug("sender settled")
@@ -279,7 +302,7 @@ export class BrokerQueue<
 
         delete consumer.current_delivery[delivery.id]
 
-        this._locked_messages.delete(message.message_id)
+        this.locked_messages.delete(message.message_id)
 
         this.tryDeadletterMessage(message)
         delivery.update(true)
@@ -325,14 +348,14 @@ export class BrokerQueue<
           consumer.sender.sendable() &&
           consumer.sender.is_open() &&
           consumer.sender.is_remote_open() &&
-          (!this.fifo || this._locked_messages.size === 0) &&
+          (!this.fifo || this.locked_messages.size === 0) &&
           this._messages.size() > 0,
       ))
     ) {
       const message = this.dequeue()!
 
       // TODO: check queue lock mode?
-      this._locked_messages.set(message.message_id, message)
+      this.locked_messages.set(message.message_id, message)
 
       // From: azure-sdk-for-js/sdk/servicebus/service-bus/src/serviceBusMessage.ts:602
       //

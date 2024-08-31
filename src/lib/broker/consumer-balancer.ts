@@ -67,6 +67,18 @@ export class BrokerConsumerBalancer {
     return this.getOrCreate(queue.id).peekMessages(messageCount)
   }
 
+  consumeDeferredMessages(
+    queueId: QualifiedQueueId | string,
+    ...sequenceIds: Long[]
+  ) {
+    const queue = this.getQueueFromStoreOrThrow(queueId)
+    const broker_queue = this.getOrCreate(queue.id)
+
+    return sequenceIds
+      .map((sequenceId) => broker_queue.consumeDeferredMessage(sequenceId))
+      .filter((v): v is Exclude<typeof v, undefined> => !!v)
+  }
+
   deliverMessagesToQueue(
     queueId: QualifiedQueueId | string,
     ...message: ParsedTypedRheaMessageWithId[]

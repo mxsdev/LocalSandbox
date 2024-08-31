@@ -1,7 +1,7 @@
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
-  "can abandon single message from queue",
+  "can defer single message",
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 
@@ -15,22 +15,18 @@ fixturedTest(
       bodyType: "value",
     })
 
-    const receiver = sb_client.createReceiver(queue.name!, {})
+    const receiver = sb_client.createReceiver(queue.name!)
     onTestFinished(() => receiver.close())
 
     {
       const [message] = await receiver.receiveMessages(1)
+      await receiver.deferMessage(message!)
 
-      expect(message!.body).toBe("hello world!")
-      await receiver.abandonMessage(message!)
-    }
-
-    {
-      const [message] = await receiver.receiveMessages(1, {
-        maxWaitTimeInMs: 0,
-      })
-
-      expect(message).toBeUndefined()
+      const [deferred_message] = await receiver.receiveDeferredMessages(
+        message!.sequenceNumber!,
+      )
+      expect(deferred_message).toBeTruthy()
+      expect(deferred_message).toMatchObject({ body: "hello world!" })
     }
   },
 )

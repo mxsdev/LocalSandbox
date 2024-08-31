@@ -204,6 +204,15 @@ export class AzureServiceBusBroker extends BrokerServer {
               }),
               z.object({
                 operation: z.literal(
+                  Constants.operations.receiveBySequenceNumber,
+                ),
+                body: z.object({
+                  [Constants.sequenceNumbers]: serializedLong.array(),
+                  [Constants.receiverSettleMode]: z.number().int(),
+                }),
+              }),
+              z.object({
+                operation: z.literal(
                   BrokerConstants.debug.operations.setSequenceNumber,
                 ),
                 body: z.object({
@@ -354,6 +363,36 @@ export class AzureServiceBusBroker extends BrokerServer {
                     message: encodeRheaMessage(m),
                   })),
                 })
+              }
+              break
+
+            case Constants.operations.receiveBySequenceNumber:
+              {
+                const {
+                  [Constants.sequenceNumbers]: sequenceNumbers,
+                  // TODO: figure this out
+                  [Constants.receiverSettleMode]: receiverSettleMode,
+                } = parsed.data.body
+
+                respondSuccess(consumer, {
+                  messages: this.consumer_balancer
+                    .consumeDeferredMessages(queue, ...sequenceNumbers)
+                    .map((m) => ({ message: encodeRheaMessage(m) })),
+                })
+
+                if (receiverSettleMode === 1) {
+                  delivery.accept()
+                  delivery.update(true)
+                }
+              }
+              break
+
+            default:
+              {
+                this.logger?.error(
+                  { message },
+                  `Unhandled operation ${operation}`,
+                )
               }
               break
           }
