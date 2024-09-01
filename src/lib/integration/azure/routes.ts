@@ -105,11 +105,12 @@ export const azure_routes = createIntegration({
               .omit({
                 maxDeliveryCount: true,
                 lockDuration: true,
+                defaultMessageTimeToLive: true,
               })
               .extend({
                 maxDeliveryCount:
                   sbQueueProperties.shape.maxDeliveryCount.default(10),
-                // TODO: enforce maximum....
+                defaultMessageTimeToLive: z.string().duration().optional(),
                 lockDuration: z
                   .string()
                   .duration()

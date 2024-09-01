@@ -85,7 +85,7 @@ export class BrokerQueue<
     { message: M; timeout: NodeJS.Timeout; lock_duration_ms: number }
   >()
 
-  private timeouts: Record<string, NodeJS.Timeout> = {}
+  private message_schedule_timeouts: Record<string, NodeJS.Timeout> = {}
 
   private consumers: Record<string, QueueConsumer<M>> = {}
 
@@ -172,7 +172,7 @@ export class BrokerQueue<
         scheduled_enqueued_time &&
         scheduled_enqueued_time.getTime() > Date.now()
       ) {
-        this.timeouts[
+        this.message_schedule_timeouts[
           serializedLong
             .parse(message.message_annotations[Constants.sequenceNumber])
             .toString()
@@ -189,6 +189,16 @@ export class BrokerQueue<
     this.tryFlush()
   }
 
+  private listNonExpiredMessages() {
+    return this._messages
+      .toArray()
+      .filter(
+        (m) =>
+          !m.absolute_expiry_time ||
+          new Date(m.absolute_expiry_time) > new Date(),
+      )
+  }
+
   peekMessages(messageCount: number) {
     // TODO: introduce more efficient implementation...
     return this._messages
@@ -198,7 +208,8 @@ export class BrokerQueue<
   }
 
   cancelScheduledMessage(sequence_number: Long): boolean {
-    const existing_timeout = this.timeouts[sequence_number.toString()]
+    const existing_timeout =
+      this.message_schedule_timeouts[sequence_number.toString()]
 
     if (!existing_timeout) {
       return false
@@ -365,17 +376,6 @@ export class BrokerQueue<
       "Registering sender",
     )
 
-    const tryRedeliverMessage = (message: M) => {
-      this.locked_messages.delete(message.message_id)
-
-      message.delivery_count ??= 0
-      message.delivery_count += 1
-
-      // TODO: if message.delivery_count > queue.maxretries, send to DLQ or destroy
-
-      this.scheduleMessagesInFront(message)
-    }
-
     const listeners = {
       [SenderEvents.senderOpen]: (e: any) => {
         this.logger?.trace({ sender: e.sender.name }, "sender is open")
@@ -463,7 +463,7 @@ export class BrokerQueue<
   }
 
   close() {
-    Object.values(this.timeouts).forEach(clearTimeout)
+    Object.values(this.message_schedule_timeouts).forEach(clearTimeout)
     Object.values(this.locked_messages).forEach(({ timeout }) =>
       clearTimeout(timeout),
     )
@@ -475,6 +475,8 @@ export class BrokerQueue<
     const lockDurationMs = Temporal.Duration.from(
       this.queue.properties.lockDuration,
     ).total({ unit: "millisecond" })
+
+    const queue = this.queue
 
     while (
       (consumer = Object.values(this.consumers).find(
@@ -488,6 +490,24 @@ export class BrokerQueue<
       ))
     ) {
       const message = this.dequeue()!
+
+      // check expired
+      if (
+        message.absolute_expiry_time &&
+        new Date(message.absolute_expiry_time) <= new Date()
+      ) {
+        this.logger?.debug(
+          {
+            message_id: message.message_id,
+            ttl: message.ttl,
+            absolute_expiry_time: message.absolute_expiry_time,
+            queue: this.queue_id,
+          },
+          "Preventing message from sending due to expiration",
+        )
+        continue
+      }
+
       const consumer_copy = consumer
 
       // TODO: check queue lock mode?

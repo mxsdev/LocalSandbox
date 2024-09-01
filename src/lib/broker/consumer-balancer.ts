@@ -1,4 +1,4 @@
-import type { Delivery, Sender } from "rhea"
+import type { Delivery, Message, Sender } from "rhea"
 import type {
   BrokerStore,
   QualifiedNamespaceId,
@@ -19,6 +19,7 @@ import {
   unserializedLongToArrayLike,
   unserializedLongToBufferLike,
 } from "../util/long.js"
+import { Temporal } from "@js-temporal/polyfill"
 
 export class BrokerConsumerBalancer {
   private queues: Record<
@@ -107,6 +108,26 @@ export class BrokerConsumerBalancer {
     const messages = message.map((m) => {
       const sequence_number = this.next_sequence_number
       this.next_sequence_number = this.next_sequence_number.add(1)
+
+      const msg = m as Message
+
+      if (
+        !msg.absolute_expiry_time &&
+        queue.properties.defaultMessageTimeToLive
+      ) {
+        // TODO: check if changing the default TTL affects in-flight messages,
+        // or just newly scheduled ones
+        const creation_time = new Date(
+          (msg.creation_time
+            ? new Date(msg.creation_time).getTime()
+            : Date.now()) +
+            Temporal.Duration.from(
+              queue.properties.defaultMessageTimeToLive,
+            ).total("milliseconds"),
+        )
+
+        msg.absolute_expiry_time = creation_time
+      }
 
       m["message_annotations"] = {
         ...m["message_annotations"],
