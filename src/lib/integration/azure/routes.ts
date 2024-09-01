@@ -106,11 +106,17 @@ export const azure_routes = createIntegration({
                 maxDeliveryCount: true,
                 lockDuration: true,
                 defaultMessageTimeToLive: true,
+                duplicateDetectionHistoryTimeWindow: true,
               })
               .extend({
                 maxDeliveryCount:
                   sbQueueProperties.shape.maxDeliveryCount.default(10),
                 defaultMessageTimeToLive: z.string().duration().optional(),
+                duplicateDetectionHistoryTimeWindow: z
+                  .string()
+                  .duration()
+                  .optional()
+                  .default(Temporal.Duration.from({ minutes: 10 }).toString()),
                 lockDuration: z
                   .string()
                   .duration()

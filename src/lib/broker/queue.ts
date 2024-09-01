@@ -78,7 +78,7 @@ export class BrokerQueue<
     }
   },
 > {
-  private _messages = new Deque<M>()
+  private _messages = new Deque<{ message: M; scheduled_at: Date }>()
 
   private deferred_messages = new Map<string, M>()
   private locked_messages = new Map<
@@ -108,11 +108,15 @@ export class BrokerQueue<
   }
 
   private enqueue(...messages: M[]) {
-    messages.forEach(this._messages.pushFront.bind(this._messages))
+    messages.forEach((message) =>
+      this._messages.pushFront({ message, scheduled_at: new Date() }),
+    )
   }
 
   private enqueueFront(...messages: M[]) {
-    messages.forEach(this._messages.pushBack.bind(this._messages))
+    messages.forEach((message) =>
+      this._messages.pushBack({ message, scheduled_at: new Date() }),
+    )
   }
 
   private dequeue() {
@@ -155,7 +159,30 @@ export class BrokerQueue<
   scheduleMessages(...messages: M[]) {
     const messages_for_immediate_delivery: M[] = []
 
+    const queue = this.queue
+
     for (const message of messages) {
+      if (queue.properties.requiresDuplicateDetection) {
+        const duplicateDetectionMs = Temporal.Duration.from(
+          queue.properties.duplicateDetectionHistoryTimeWindow,
+        ).total("milliseconds")
+
+        if (
+          this._messages
+            .toArray()
+            .filter(
+              ({ scheduled_at }) =>
+                Date.now() - scheduled_at.getTime() <= duplicateDetectionMs,
+            )
+            .some(
+              ({ message: existing_message }) =>
+                existing_message.message_id === message.message_id,
+            )
+        ) {
+          continue
+        }
+      }
+
       const scheduled_enqueued_time = message.message_annotations?.[
         Constants.scheduledEnqueueTime
       ] as Date | undefined
@@ -211,6 +238,7 @@ export class BrokerQueue<
   private listNonExpiredMessages() {
     return this._messages
       .toArray()
+      .map(({ message }) => message)
       .filter(
         (m) =>
           !m.absolute_expiry_time ||
@@ -222,6 +250,7 @@ export class BrokerQueue<
     // TODO: introduce more efficient implementation...
     return this._messages
       .toArray()
+      .map(({ message }) => message)
       .slice(this._messages.size() - messageCount, this._messages.size())
       .reverse()
   }
@@ -515,8 +544,6 @@ export class BrokerQueue<
       this.queue.properties.lockDuration,
     ).total({ unit: "millisecond" })
 
-    const queue = this.queue
-
     while (
       (consumer = Object.values(this.consumers).find(
         (consumer) =>
@@ -528,7 +555,7 @@ export class BrokerQueue<
           this._messages.size() > 0,
       ))
     ) {
-      const message = this.dequeue()!
+      const { message } = this.dequeue()!
 
       // check expired
       if (
