@@ -123,6 +123,10 @@ export class BrokerQueue<
     return this._messages.popBack()
   }
 
+  private refreshIdleTimeout() {
+    this.queue.autoDeleteTimeout?.refresh()
+  }
+
   /**
    * Should be called whenever a new receive request is made or a message is
    * sent
@@ -266,6 +270,8 @@ export class BrokerQueue<
   }
 
   peekMessages(messageCount: number) {
+    this.refreshIdleTimeout()
+
     // TODO: introduce more efficient implementation...
     return this._messages
       .toArray()
@@ -275,6 +281,8 @@ export class BrokerQueue<
   }
 
   cancelScheduledMessage(sequence_number: Long): boolean {
+    this.refreshIdleTimeout()
+
     const existing_timeout =
       this.message_schedule_timeouts[sequence_number.toString()]
 
@@ -307,6 +315,8 @@ export class BrokerQueue<
       )
       delete this.consumers[consumer.sender.name]
     }
+
+    this.refreshIdleTimeout()
   }
 
   renewLock(sender: SenderName, delivery_tag: DeliveryTag) {
@@ -343,6 +353,8 @@ export class BrokerQueue<
       )
       return
     }
+
+    this.refreshIdleTimeout()
 
     locked_message.timeout.refresh()
     return Date.now() + locked_message.lock_duration_ms
@@ -447,6 +459,8 @@ export class BrokerQueue<
         }
         break
     }
+
+    this.refreshIdleTimeout()
 
     return message
   }
@@ -564,6 +578,8 @@ export class BrokerQueue<
     const lockDurationMs = Temporal.Duration.from(
       this.queue.properties.lockDuration,
     ).total({ unit: "millisecond" })
+
+    this.refreshIdleTimeout()
 
     while (
       (consumer = Object.values(this.consumers).find(
