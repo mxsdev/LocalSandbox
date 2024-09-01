@@ -16,6 +16,7 @@ import {
 } from "../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/Queue.js"
 import { z } from "zod"
 import { Temporal } from "@js-temporal/polyfill"
+import { zodTimeout } from "../../util/timeout.js"
 
 export const DEFAULT_SUBSCRIPTION_DISPLAY_NAME =
   "LocalSandbox Test Subscription"
@@ -62,6 +63,41 @@ export const azure_routes = createIntegration({
     afterAuthMiddleware: [bearerAuthMiddleware],
     passErrors: true,
   },
+  triggers: {
+    change(args) {
+      // TODO: support topics, subscriptions too
+      if (args.model === "sb_queue") {
+        if (args.new_val?.autoDeleteTimeout) {
+          args.new_val.autoDeleteTimeout.refresh()
+        }
+
+        if (
+          args.new_val?.properties.autoDeleteOnIdle !==
+          args.old_val?.properties.autoDeleteOnIdle
+        ) {
+          let new_timeout: NodeJS.Timeout | undefined = undefined
+
+          if (args.new_val?.properties.autoDeleteOnIdle) {
+            clearTimeout(args.new_val.autoDeleteTimeout)
+            new_timeout = setTimeout(() => {
+              args.store
+                .delete()
+                .where((q) => q.id === args.new_val?.id ?? args.old_val?.id)
+                .execute()
+            }, Temporal.Duration.from(args.new_val?.properties.autoDeleteOnIdle).total("milliseconds"))
+          }
+
+          args.store
+            .update()
+            .where((q) => q.id === args.new_val?.id ?? args.old_val?.id)
+            .set({
+              autoDeleteTimeout: new_timeout,
+            })
+            .execute()
+        }
+      }
+    },
+  },
   models: createModelSpecs({
     subscription: {
       primaryKey: "subscriptionId",
@@ -107,6 +143,7 @@ export const azure_routes = createIntegration({
                 lockDuration: true,
                 defaultMessageTimeToLive: true,
                 duplicateDetectionHistoryTimeWindow: true,
+                autoDeleteOnIdle: true,
               })
               .extend({
                 maxDeliveryCount:
@@ -117,6 +154,23 @@ export const azure_routes = createIntegration({
                   .duration()
                   .optional()
                   .default(Temporal.Duration.from({ minutes: 10 }).toString()),
+                autoDeleteOnIdle: z
+                  .string()
+                  .duration()
+                  .optional()
+                  .refine(
+                    (serialized) =>
+                      !serialized ||
+                      (process.env[
+                        "LOCALSANDBOX_NO_ENFORCE_SB_AUTO_DELETE_IDLE_MINIMUM"
+                      ]
+                        ? true
+                        : Temporal.Duration.from(serialized).total({
+                            unit: "minute",
+                          }) > 5),
+                    // TODO: get this error message accurate to Azure
+                    "autoDeleteOnIdle cannot be less than 5 minutes",
+                  ),
                 lockDuration: z
                   .string()
                   .duration()
@@ -132,6 +186,8 @@ export const azure_routes = createIntegration({
                   ),
               })
               .default({}),
+
+            autoDeleteTimeout: zodTimeout.optional(),
           }),
         )
         .transform((v) => ({

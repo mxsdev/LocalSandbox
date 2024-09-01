@@ -127,19 +127,18 @@ const resolveLazyError = (err: LazyError) =>
 
 type ModelTriggers<
   Root extends ModelSpecs<any>,
-  Spec extends ModelSpec<any, keyof Root & string>,
-  ModelName extends keyof Root & string,
+  ModelName extends keyof Root & string = keyof Root & string,
 > = {
-  insert?: (val: SpecWithRelationalId<Root, Spec>) => void
-  update?: (
-    old_val: SpecWithRelationalId<Root, Spec>,
-    new_val: SpecWithRelationalId<Root, Spec>,
+  change?: (
+    args: ModelName extends keyof Root & string
+      ? {
+          model: ModelName
+          store: Model<Root, Root[ModelName], ModelName>
+          old_val: SpecWithRelationalId<Root, Root[ModelName]> | null
+          new_val: SpecWithRelationalId<Root, Root[ModelName]> | null
+        }
+      : never,
   ) => void
-  insertOrUpdate?: (
-    old_val: SpecWithRelationalId<Root, Spec> | undefined,
-    new_val: SpecWithRelationalId<Root, Spec>,
-  ) => void
-  delete?: (val: SpecWithRelationalId<Root, Spec>) => void
 }
 
 export const createNewStore = <T extends Store<any>>(store: T): T => {
@@ -167,8 +166,7 @@ class Model<
     protected spec: Spec,
     protected models: Store<Root>,
     protected modelName: ModelName,
-    // TODO: implement
-    protected triggers: ModelTriggers<Root, Spec, ModelName> = {},
+    public triggers: ModelTriggers<Root> = {},
   ) {}
 
   private createNewInstance(models: Store<Root>) {
@@ -335,6 +333,9 @@ class ModelSelectBuilder<
       for (const match of getMatches()) {
         const id = match[this.root["spec"].primaryKey as keyof Output]
 
+        let old_val: any = this.root["_store"][id] ?? null
+        let new_val: any = null
+
         if (this.updates.length > 0) {
           let updates: any = {}
 
@@ -353,8 +354,19 @@ class ModelSelectBuilder<
             ...this.root["_store"][id],
             ...updates,
           }
+          new_val = this.root["_store"][id]
         } else if (this.delete_mode) {
           delete this.root["_store"][id]
+        }
+
+        if (new_val || old_val) {
+          this.root.triggers.change?.({
+            model: this.root["modelName"],
+            store: this.root,
+            new_val,
+            old_val,
+            // TODO: type this properly
+          } as any)
         }
       }
     }
@@ -455,13 +467,19 @@ class ModelInsertBuilder<
   }
 
   execute() {
+    let old_val: any = null
+    let new_val: any = null
+
     for (const change of this.changes) {
       if (this.root["_store"][change[this.primaryKey]]) {
         if (this.on_conflict === "mergeall") {
-          this.root["_store"][change[this.primaryKey]] = {
+          old_val ??= this.root["_store"][change[this.primaryKey]]
+          new_val = {
             ...this.root["_store"][change[this.primaryKey]],
             ...change,
           }
+
+          this.root["_store"][change[this.primaryKey]] = new_val
         } else if (this.on_conflict === "donothing") {
           // do nothing...
         } else {
@@ -469,8 +487,21 @@ class ModelInsertBuilder<
           throw new Error("Duplicate primary key!")
         }
       } else {
+        old_val ??= this.root["_store"][change[this.primaryKey]]
+        new_val = change
+
         this.root["_store"][change[this.primaryKey]] = change
       }
+    }
+
+    if (new_val || old_val) {
+      this.root.triggers.change?.({
+        model: this.root["modelName"],
+        store: this.root,
+        new_val,
+        old_val,
+        // TODO: type this properly
+      } as any)
     }
 
     return this.changes.map((c) => this.store[c[this.primaryKey]])
@@ -523,13 +554,9 @@ type Store<MS extends ModelSpecs<any>> = {
   [Key in keyof MS & string]: Model<MS, MS[Key], Key>
 }
 
-type ModelsTriggers<MS extends ModelSpecs<any>> = {
-  [K in keyof MS & string]?: ModelTriggers<MS, MS[K], K>
-}
-
 export const getStore = <const MS extends ModelSpecs<any>>(
   modelSpecs: MS,
-  triggers?: ModelsTriggers<MS>,
+  triggers?: ModelTriggers<MS>,
 ) => {
   let models: Store<MS> = {} as any
 
@@ -549,7 +576,7 @@ export const getStore = <const MS extends ModelSpecs<any>>(
 interface IntegrationSpec<MS extends ModelSpecs<any>, GS extends GlobalSpec> {
   globalSpec: GS
   models: MS
-  triggers?: ModelsTriggers<MS>
+  triggers?: ModelTriggers<MS>
 }
 
 export function createIntegration<

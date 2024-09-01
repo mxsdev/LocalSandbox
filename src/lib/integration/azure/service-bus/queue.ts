@@ -49,3 +49,38 @@ azure_routes.implementRoute(
     return ctx.json(queue)
   },
 )
+
+azure_routes.implementRoute(
+  ...extractRoute(
+    queueRoutes,
+    "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.ServiceBus/namespaces/[namespaceName]/queues/[queueName]",
+    "GET",
+  ),
+  async (req, ctx) => {
+    const namespace = ctx.store.sb_namespace
+      .select()
+      .where(
+        (ns) =>
+          ns.resource_group().subscription().subscriptionId ===
+          ctx.subscription.subscriptionId,
+      )
+      .where(
+        (ns) =>
+          ns.resource_group().subscription().subscriptionId ===
+          req.routeParams.subscriptionId,
+      )
+      .where(
+        (ns) => ns.resource_group().name === req.routeParams.resourceGroupName,
+      )
+      .where((ns) => ns.name === req.routeParams.namespaceName)
+      .executeTakeFirstOrThrow(() => new NotFoundError("Namespace not found"))
+
+    const queue = ctx.store.sb_queue
+      .select()
+      .where((q) => q.sb_namespace().id === namespace.id)
+      .where((q) => q.name === req.routeParams.queueName)
+      .executeTakeFirstOrThrow(() => new NotFoundError("Queue not found"))
+
+    return ctx.json(queue)
+  },
+)
