@@ -1,3 +1,4 @@
+import rhea from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
 import { Delivery, Message, Sender, SenderEvents } from "rhea"
 import { Deque } from "@datastructures-js/deque"
@@ -86,6 +87,7 @@ export class BrokerQueue<
   >()
 
   private message_schedule_timeouts: Record<string, NodeJS.Timeout> = {}
+  private message_expiration_timeouts: Record<string, NodeJS.Timeout> = {}
 
   private consumers: Record<string, QueueConsumer<M>> = {}
 
@@ -140,8 +142,7 @@ export class BrokerQueue<
         queue_name: queue.properties.forwardDeadLetteredMessagesTo,
       }
 
-      message.message_annotations[Constants.deadLetterSource] =
-        dlq_id.queue_name
+      message.message_annotations[Constants.deadLetterSource] = queue.name!
 
       message.message_annotations[Constants.deadLetterReason] = reason
 
@@ -158,6 +159,24 @@ export class BrokerQueue<
       const scheduled_enqueued_time = message.message_annotations?.[
         Constants.scheduledEnqueueTime
       ] as Date | undefined
+
+      if (message.absolute_expiry_time) {
+        this.message_expiration_timeouts[message.message_id] = setTimeout(
+          () => {
+            delete this.message_expiration_timeouts[message.message_id]
+            // TODO: populate error & reason
+            this.tryDeadletterMessage({
+              ...message,
+              ttl: undefined,
+              absolute_expiry_time: undefined,
+            })
+          },
+          Math.max(
+            0,
+            new Date(message.absolute_expiry_time).getTime() - Date.now(),
+          ),
+        )
+      }
 
       if (
         scheduled_enqueued_time &&
@@ -464,6 +483,8 @@ export class BrokerQueue<
 
   close() {
     Object.values(this.message_schedule_timeouts).forEach(clearTimeout)
+    Object.values(this.message_expiration_timeouts).forEach(clearTimeout)
+
     Object.values(this.locked_messages).forEach(({ timeout }) =>
       clearTimeout(timeout),
     )

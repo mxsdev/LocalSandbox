@@ -40,7 +40,7 @@ fixturedTest(
 
       await receiver.completeMessage(message!)
 
-      expect(message?.deadLetterSource).toBe(dlq.name!)
+      expect(message?.deadLetterSource).toBe(queue.name!)
       expect(message?.deadLetterReason).toBe("dead letter reason")
       expect(message?.deadLetterErrorDescription).toBe(
         "dead letter error description",
