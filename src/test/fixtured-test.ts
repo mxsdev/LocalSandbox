@@ -144,6 +144,13 @@ const getAzureContextWithQueueFixtures = async (azure: AzureContext) => {
       parameters,
     )
 
+  const getQueue = async (queue_name: string) =>
+    sb_management_client.queues.get(
+      resource_group.name!,
+      namespace.name!,
+      queue_name,
+    )
+
   return {
     ...azure,
     resource_group,
@@ -154,6 +161,7 @@ const getAzureContextWithQueueFixtures = async (azure: AzureContext) => {
       subscription_id,
     }),
     createQueue,
+    getQueue,
   }
 }
 

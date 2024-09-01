@@ -123,6 +123,25 @@ export class BrokerQueue<
     return this._messages.popBack()
   }
 
+  /**
+   * Should be called whenever a new receive request is made or a message is
+   * sent
+   */
+  private propagateAccess() {
+    this.logger?.debug("Propagating access...")
+
+    this.store.sb_queue
+      .update()
+      .where((q) => q.id === this.queue_id)
+      .set((v) => ({
+        properties: {
+          ...v.properties,
+          accessedAt: new Date().toISOString(),
+        },
+      }))
+      .execute()
+  }
+
   consumeDeferredMessage(sequenceId: Long) {
     const res = this.deferred_messages.get(sequenceId.toString())
     this.deferred_messages.delete(sequenceId.toString())
@@ -489,6 +508,8 @@ export class BrokerQueue<
       schedule_for_deletion: false,
     }
     this.tryFlush()
+
+    this.propagateAccess()
   }
 
   removeConsumer(sender: Sender) {
@@ -630,6 +651,8 @@ export class BrokerQueue<
       )
 
       consumer.current_delivery.store(delivery, { delivery, message })
+
+      this.propagateAccess()
     }
   }
 }

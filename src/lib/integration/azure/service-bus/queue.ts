@@ -39,6 +39,7 @@ azure_routes.implementRoute(
         name: req.routeParams.queueName,
         properties: {
           ...parameters.properties,
+          // TODO: automate this
           createdAt: new Date().toISOString(),
           messageCount: 0,
         },
