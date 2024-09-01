@@ -222,7 +222,11 @@ export class AzureServiceBusBroker extends BrokerServer {
                 body: z.object({
                   [Constants.lockTokens]: serializedLockToken.array(),
                   // TODO: verify other disposition statuses...
-                  [Constants.dispositionStatus]: z.enum(["completed"]),
+                  [Constants.dispositionStatus]: z.enum([
+                    "completed",
+                    "abandoned",
+                    // TODO: dead lettered?
+                  ]),
                 }),
               }),
               z.object({

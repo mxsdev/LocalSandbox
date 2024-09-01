@@ -5,7 +5,9 @@ fixturedTest(
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 
-    const queue = await createQueue("queue", {})
+    const queue = await createQueue("queue", {
+      maxDeliveryCount: 1,
+    })
 
     const sender = sb_client.createSender(queue.name!)
     onTestFinished(() => sender.close())

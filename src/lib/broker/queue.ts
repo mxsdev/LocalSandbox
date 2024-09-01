@@ -363,6 +363,18 @@ export class BrokerQueue<
           if (consumer.sender.rcv_settle_mode === 1) {
             delivery.update(true)
           }
+
+          message.delivery_count ??= 1
+          message.delivery_count += 1
+
+          const maxDeliveryCount = this.queue.properties.maxDeliveryCount
+
+          if (message.delivery_count > maxDeliveryCount) {
+            // TODO: add dead letter reason for max redeliveries
+            this.tryDeadletterMessage(message)
+          } else {
+            this.scheduleMessagesInFront(message)
+          }
         }
         break
 
@@ -387,6 +399,8 @@ export class BrokerQueue<
         }
         break
     }
+
+    return message
   }
 
   addConsumer(sender: Sender) {
@@ -429,7 +443,11 @@ export class BrokerQueue<
       [SenderEvents.rejected]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug(Object.keys(e), "sender rejected message")
 
-        this.updateConsumerDisposition(e.sender, e.delivery, "rejected")
+        const message = this.updateConsumerDisposition(
+          e.sender,
+          e.delivery,
+          "rejected",
+        )
       },
     }
 
