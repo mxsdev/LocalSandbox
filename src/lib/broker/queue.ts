@@ -13,6 +13,7 @@ import Long from "long"
 import { BufferLikeEncodedLong, serializedLong } from "../util/long.js"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import { uuidToString } from "../util/uuid.js"
+import { MessageCountDetails } from "@azure/arm-servicebus"
 
 interface QueueConsumerDeliveryInfo<M> {
   delivery: Delivery
@@ -90,6 +91,8 @@ export class BrokerQueue<
   private message_expiration_timeouts: Record<string, NodeJS.Timeout> = {}
 
   private consumers: Record<string, QueueConsumer<M>> = {}
+
+  private num_messages_transferred_to_dlq: number = 0
 
   constructor(
     private store: BrokerStore,
@@ -176,6 +179,7 @@ export class BrokerQueue<
       message.message_annotations[Constants.deadLetterDescription] = description
 
       this.consumer_balancer.deliverMessagesToQueue(dlq_id, message)
+      this.num_messages_transferred_to_dlq++
     }
   }
 
@@ -241,14 +245,18 @@ export class BrokerQueue<
         scheduled_enqueued_time &&
         scheduled_enqueued_time.getTime() > Date.now()
       ) {
-        this.message_schedule_timeouts[
-          serializedLong
-            .parse(message.message_annotations[Constants.sequenceNumber])
-            .toString()
-        ] = setTimeout(() => {
-          this.enqueue(message)
-          this.tryFlush()
-        }, scheduled_enqueued_time.getTime() - Date.now())
+        const message_sequence_number_id = serializedLong
+          .parse(message.message_annotations[Constants.sequenceNumber])
+          .toString()
+
+        this.message_schedule_timeouts[message_sequence_number_id] = setTimeout(
+          () => {
+            delete this.message_schedule_timeouts[message_sequence_number_id]
+            this.enqueue(message)
+            this.tryFlush()
+          },
+          scheduled_enqueued_time.getTime() - Date.now(),
+        )
       } else {
         messages_for_immediate_delivery.push(message)
       }
@@ -272,6 +280,28 @@ export class BrokerQueue<
   // TODO: which messages should/shouldn't be included in the count??
   get messageCount() {
     return this.listNonExpiredMessages().length + this.locked_messages.size
+  }
+
+  get messageCountDetails(): MessageCountDetails {
+    const non_expired_messages = this.listNonExpiredMessages()
+    const locked_messages = [...this.locked_messages.values()].map(
+      ({ message }) => message,
+    )
+
+    return {
+      activeMessageCount: non_expired_messages.length,
+      scheduledMessageCount:
+        Object.keys(this.message_schedule_timeouts).length +
+        [...non_expired_messages, ...locked_messages].filter(
+          (message) =>
+            !!message.message_annotations?.[Constants.scheduledEnqueueTime],
+        ).length,
+      transferDeadLetterMessageCount: this.num_messages_transferred_to_dlq,
+      // TODO: implement this
+      deadLetterMessageCount: 0,
+      // TODO: implement this once transferring is added
+      transferMessageCount: 0,
+    }
   }
 
   peekMessages(messageCount: number) {

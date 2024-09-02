@@ -86,11 +86,15 @@ azure_routes.implementRoute(
       queue.id,
     )
 
+    const messageCountDetails =
+      ctx.azure_service_bus_broker?.queueMessageCountDetails(queue.id)
+
     return ctx.json({
       ...queue,
       properties: {
         ...queue.properties,
         messageCount,
+        countDetails: messageCountDetails,
       },
     })
   },

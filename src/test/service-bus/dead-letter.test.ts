@@ -3,11 +3,17 @@ import { fixturedTest } from "test/fixtured-test.js"
 fixturedTest(
   "can manually dead letter message",
   async ({ azure_queue, onTestFinished, expect }) => {
-    const { sb_client, createQueue } = azure_queue
+    const { sb_client, createQueue, getQueue } = azure_queue
 
     const dlq = await createQueue("dlq", {})
     const queue = await createQueue("queue", {
       forwardDeadLetteredMessagesTo: dlq.name!,
+    })
+
+    await expect(getQueue(queue.name!)).resolves.toMatchObject({
+      countDetails: {
+        transferDeadLetterMessageCount: 0,
+      },
     })
 
     const sender = sb_client.createSender(queue.name!)
@@ -45,6 +51,12 @@ fixturedTest(
       expect(message?.deadLetterErrorDescription).toBe(
         "dead letter error description",
       )
+
+      await expect(getQueue(queue.name!)).resolves.toMatchObject({
+        countDetails: {
+          transferDeadLetterMessageCount: 1,
+        },
+      })
 
       // TODO: ensure dead letter options are present
     }
