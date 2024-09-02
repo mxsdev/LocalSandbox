@@ -1,6 +1,5 @@
 import { promisify } from "node:util"
 import { Server } from "http"
-import { ListenOptions } from "net"
 import { Logger } from "pino"
 import rhea, {
   type Connection,
@@ -53,8 +52,12 @@ export abstract class BrokerServer {
 
   protected opts: BrokerServerOpts & Required<Pick<BrokerServerOpts, "port">>
 
-  protected get logger() {
+  get logger() {
     return this.opts.logger
+  }
+
+  set logger(val: Logger | undefined) {
+    this.opts.logger = val
   }
 
   protected generateUUID() {
@@ -164,5 +167,15 @@ export abstract class BrokerServer {
       this.server?.removeAllListeners()
       this.container.removeAllListeners()
     }
+  }
+
+  set port(val: number) {
+    if (this.server) throw new Error("Cannot set port while server is running")
+
+    this.opts.port = val
+  }
+
+  get port() {
+    return this.opts.port
   }
 }

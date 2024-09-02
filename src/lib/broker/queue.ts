@@ -269,6 +269,11 @@ export class BrokerQueue<
       )
   }
 
+  // TODO: which messages should/shouldn't be included in the count??
+  get messageCount() {
+    return this.listNonExpiredMessages().length + this.locked_messages.size
+  }
+
   peekMessages(messageCount: number) {
     this.refreshIdleTimeout()
 

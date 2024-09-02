@@ -5,8 +5,16 @@ import { routeBundleFromRouteMap } from "../edgespec-util/route-bundle-from-rout
 import { createWithDefaultExceptionHandling } from "edgespec/middleware/index.js"
 import { createAzureIntegration } from "../integration/index.js"
 import { getLogger } from "../logger/index.js"
+import { Logger } from "pino"
+import { AzureServiceBusBroker } from "../broker/broker.js"
+import { azure_routes } from "../integration/azure/routes.js"
+import { withLogger } from "../logger/with-logger.js"
 
-const routeLoggingMiddleware: Middleware = async (req, ctx, next) => {
+const routeLoggingMiddleware: Middleware<{}, { logger: Logger }> = async (
+  req,
+  ctx,
+  next,
+) => {
   const stream = new PassThrough()
   const logger = getLogger({
     stream,
@@ -21,6 +29,8 @@ const routeLoggingMiddleware: Middleware = async (req, ctx, next) => {
     { url: req.url, method: req.method, body: await req.clone().text() },
     "Got API Request",
   )
+
+  ctx.logger = logger
 
   const res = await next(req, ctx)
 
@@ -38,7 +48,12 @@ export const withRouteSpec = createWithEdgeSpec({
   ],
 })
 
-const azure_integration = createAzureIntegration({})
+export const azure_service_bus_broker = new AzureServiceBusBroker(
+  azure_routes["store"],
+)
+const azure_integration = createAzureIntegration({
+  broker: azure_service_bus_broker,
+})
 
 export const routes: EdgeSpecRouteMap = {
   "/azure/[...params]": withRouteSpec({
@@ -46,8 +61,10 @@ export const routes: EdgeSpecRouteMap = {
     routeParams: z.object({
       params: z.string().array(),
     }),
-  })(async (req) => {
-    return await azure_integration.edgeSpecRouteBundle.makeRequest(req)
+  })(async (req, ctx) => {
+    return await azure_integration(req, {
+      middleware: [withLogger(ctx.logger.child({}))],
+    })
   }),
 }
 

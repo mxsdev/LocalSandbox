@@ -1,11 +1,11 @@
 import getPort from "get-port"
 import { afterAll, beforeAll } from "vitest"
-import { serve, serveHTTPS } from "../lib/api/serve.js"
+import { serveHTTPS } from "../lib/api/serve.js"
 import http from "node:http"
 import util from "node:util"
-import { azure_routes } from "../lib/integration/azure/routes.js"
 import { AzureServiceBusBroker } from "../lib/broker/broker.js"
 import { getTestLogger } from "./get-test-logger.js"
+import { azure_service_bus_broker } from "../lib/api/index.js"
 
 let server: http.Server | undefined
 let broker: AzureServiceBusBroker | undefined
@@ -18,12 +18,9 @@ beforeAll(async () => {
   server = await serveHTTPS(testPort)
 
   testServiceBusPort = await getPort()
-  const store = azure_routes["store"]
-  broker = new AzureServiceBusBroker(store, {
-    port: testServiceBusPort,
-    logger: getTestLogger("amqp"),
-  })
-  await broker.open()
+  azure_service_bus_broker.port = testServiceBusPort
+  azure_service_bus_broker.logger = getTestLogger("amqp")
+  await azure_service_bus_broker.open()
 })
 
 afterAll(async () => {

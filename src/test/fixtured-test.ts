@@ -8,9 +8,6 @@ import type { ServiceClientOptions } from "@azure/core-client"
 import { LocalSandboxAzureCredential } from "../lib/service-client/local-sandbox-azure-credential.js"
 import { ResourceManagementClient } from "@azure/arm-resources"
 import { Logger } from "pino"
-import { PassThrough } from "node:stream"
-import { getLogger } from "../lib/logger/index.js"
-import { createAzureIntegration } from "../lib/integration/index.js"
 import {
   createNewStore,
   IntegrationStore,

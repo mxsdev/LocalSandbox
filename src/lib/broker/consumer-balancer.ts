@@ -39,6 +39,11 @@ export class BrokerConsumerBalancer {
     private readonly logger?: Logger,
   ) {}
 
+  queueMessageCount(queueId: QualifiedQueueId | string) {
+    return this.getOrCreate(this.getQueueFromStoreOrThrow(queueId).id)
+      .messageCount
+  }
+
   removeConsumers(where: (consumer: Sender) => boolean) {
     Object.values(this.queues).forEach((q) => q.removeConsumers(where))
   }

@@ -17,6 +17,8 @@ import {
 import { z } from "zod"
 import { Temporal } from "@js-temporal/polyfill"
 import { zodTimeout } from "../../util/timeout.js"
+import { AzureServiceBusBroker } from "../../broker/broker.js"
+import { withExternallyPopulatedLogger } from "../../logger/with-logger.js"
 
 export const DEFAULT_SUBSCRIPTION_DISPLAY_NAME =
   "LocalSandbox Test Subscription"
@@ -60,7 +62,11 @@ const bearerAuthMiddleware: Middleware<
 export const azure_routes = createIntegration({
   globalSpec: {
     authMiddleware: {},
-    afterAuthMiddleware: [bearerAuthMiddleware],
+    afterAuthMiddleware: [
+      bearerAuthMiddleware,
+      AzureServiceBusBroker.middleware(),
+      withExternallyPopulatedLogger,
+    ],
     passErrors: true,
   },
   triggers: {

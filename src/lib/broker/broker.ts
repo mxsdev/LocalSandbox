@@ -32,6 +32,8 @@ import {
 } from "../util/long.js"
 import { BrokerConstants } from "./constants.js"
 import { unreorderLockToken } from "../util/service-bus.js"
+import { Middleware } from "edgespec"
+import { Logger } from "pino"
 
 export type BrokerStore = IntegrationStore<typeof azure_routes>
 
@@ -573,6 +575,12 @@ export class AzureServiceBusBroker extends BrokerServer {
     )
   }
 
+  queueMessageCount(
+    ...args: Parameters<BrokerConsumerBalancer["queueMessageCount"]>
+  ) {
+    return this.consumer_balancer.queueMessageCount(...args)
+  }
+
   override async close(): Promise<void> {
     this.consumer_balancer.close()
     return await super.close()
@@ -583,5 +591,30 @@ export class AzureServiceBusBroker extends BrokerServer {
     opts?: BrokerServerOpts,
   ) {
     super(opts)
+  }
+
+  get middleware() {
+    return AzureServiceBusBroker.middleware(this)
+  }
+
+  static middleware(instance?: AzureServiceBusBroker): Middleware<
+    {
+      logger?: Logger
+    },
+    {
+      azure_service_bus_broker?: AzureServiceBusBroker
+    }
+  > {
+    return async (req, ctx, next) => {
+      if (instance) {
+        ctx.azure_service_bus_broker ??= instance
+      } else if (!ctx.azure_service_bus_broker) {
+        ctx.logger?.warn(
+          "Azure Service Bus broker not present in request context!",
+        )
+      }
+
+      return await next(req, ctx)
+    }
   }
 }

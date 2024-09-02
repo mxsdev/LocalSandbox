@@ -708,10 +708,14 @@ export class IntegrationBuilder<
   }
 }
 
+// export type Integration<GS extends GlobalSpec = any> = Awaited<
+//   ReturnType<IntegrationBuilder<GS, any>["build"]>
+// >["edgeSpecRouteBundle"]["makeRequest"]
+
 export type Integration<GS extends GlobalSpec = any> = Awaited<
   ReturnType<IntegrationBuilder<GS, any>["build"]>
->
+>["edgeSpecRouteBundle"]["makeRequest"]
 
-export interface IntegrationConfig {}
-
-export type IntegrationFactory = (config: IntegrationConfig) => Integration
+export type IntegrationFactory<IntegrationConfig> = (
+  config: IntegrationConfig,
+) => Integration
