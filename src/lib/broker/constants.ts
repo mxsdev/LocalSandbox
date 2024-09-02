@@ -16,5 +16,9 @@ export const BrokerConstants = {
       reason: "TTLExpiredException",
       description: "The message expired and was dead lettered.",
     },
+    maxDeliveryCountExceeded: {
+      reason: "MaxDeliveryCountExceeded",
+      description: "Message could not be consumed after 2 delivery attempts.",
+    },
   },
 } as const

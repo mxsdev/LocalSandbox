@@ -510,6 +510,13 @@ export class BrokerQueue<
 
           if ((message.delivery_count ?? 1) >= maxDeliveryCount) {
             // TODO: add dead letter reason for max redeliveries
+            message.application_properties ??= {}
+            message.application_properties[BrokerConstants.deadLetterReason] =
+              BrokerConstants.errors.maxDeliveryCountExceeded.reason
+            message.application_properties[
+              BrokerConstants.deadLetterDescription
+            ] = BrokerConstants.errors.maxDeliveryCountExceeded.description
+
             this.tryDeadletterMessage(message)
           } else {
             this.scheduleMessagesInFront(message)
@@ -523,10 +530,11 @@ export class BrokerQueue<
 
           if (error?.condition === Constants.deadLetterName) {
             message.application_properties ??= {}
-            message.application_properties["DeadLetterReason"] =
+            message.application_properties[BrokerConstants.deadLetterReason] =
               error.info["DeadLetterReason"]
-            message.application_properties["DeadLetterErrorDescription"] =
-              error.info["DeadLetterErrorDescription"]
+            message.application_properties[
+              BrokerConstants.deadLetterDescription
+            ] = error.info["DeadLetterErrorDescription"]
           }
 
           this.finishDelivery(consumer, delivery)
