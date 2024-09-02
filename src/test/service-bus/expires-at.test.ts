@@ -21,7 +21,7 @@ fixturedTest(
     })
 
     {
-      const [message] = await receiver.peekMessages(1)
+      const [message] = await receiver.receiveMessages(1)
       expect(message).toBeTruthy()
 
       expect(message?.expiresAtUtc).toStrictEqual(
