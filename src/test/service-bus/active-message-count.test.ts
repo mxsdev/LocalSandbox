@@ -12,7 +12,6 @@ fixturedTest(
 
     await sender.sendMessages({
       body: "hello world!",
-      bodyType: "value",
     })
 
     await expect(getQueue(queue.name!)).resolves.toMatchObject({

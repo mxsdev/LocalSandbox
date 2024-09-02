@@ -17,11 +17,9 @@ fixturedTest(
     await Promise.all([
       sender.sendMessages({
         body: "hello world!",
-        bodyType: "value",
       }),
       sender2.sendMessages({
         body: "hello world2!",
-        bodyType: "value",
       }),
     ])
 

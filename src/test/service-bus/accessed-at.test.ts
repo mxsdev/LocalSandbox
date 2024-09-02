@@ -41,7 +41,6 @@ fixturedTest(
     const sendDate = new Date()
     await sender.sendMessages({
       body: "hello world!",
-      bodyType: "value",
     })
 
     const { createdAt } = await getQueue(queue.name!)

@@ -16,7 +16,6 @@ fixturedTest(
 
     await sender.sendMessages({
       body: "hello world!",
-      bodyType: "value",
     })
 
     const receiver = sb_client.createReceiver(queue.name!)
@@ -51,7 +50,6 @@ fixturedTest(
 
     await sender.sendMessages({
       body: "hello world!",
-      bodyType: "value",
     })
 
     const receiver = sb_client.createReceiver(queue.name!)

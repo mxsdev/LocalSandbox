@@ -20,7 +20,6 @@ fixturedTest(
 
     await sender.sendMessages({
       body: "hello world!",
-      bodyType: "value",
     })
 
     {
@@ -50,17 +49,14 @@ fixturedTest(
 
     await sender.sendMessages({
       body: "hello world!",
-      bodyType: "value",
     })
 
     await sender.sendMessages({
       body: "hello world2!",
-      bodyType: "value",
     })
 
     await sender.sendMessages({
       body: "hello world3!",
-      bodyType: "value",
     })
 
     {

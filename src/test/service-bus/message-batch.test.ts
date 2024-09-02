@@ -15,11 +15,9 @@ fixturedTest(
     })
     batch.tryAddMessage({
       body: "hello world!",
-      bodyType: "value",
     })
     batch.tryAddMessage({
       body: "hello world2!",
-      bodyType: "value",
     })
 
     await sender.sendMessages(batch)

@@ -21,7 +21,6 @@ fixturedTest(
     await sender.scheduleMessages(
       {
         body: "hello world!",
-        bodyType: "value",
       },
       schedule_at,
     )

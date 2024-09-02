@@ -21,7 +21,6 @@ fixturedTest(
 
     await sender.sendMessages({
       body: "hello world!",
-      bodyType: "value",
     })
 
     {
