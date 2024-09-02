@@ -9,6 +9,7 @@ fixturedTest(
 
     const lockDurationMs = 250
 
+    const sendTime = new Date()
     const queue = await createQueue("queue", {
       lockDuration: Temporal.Duration.from({
         milliseconds: lockDurationMs,
@@ -29,6 +30,13 @@ fixturedTest(
 
     const [message] = await receiver.receiveMessages(1)
     expect(message!.body).toBe("hello world!")
+    expect(
+      Math.abs(
+        message!.lockedUntilUtc!.getTime() -
+          sendTime.getTime() -
+          lockDurationMs,
+      ),
+    ).toBeLessThan(100)
 
     {
       const messages = await receiver.receiveMessages(1, {

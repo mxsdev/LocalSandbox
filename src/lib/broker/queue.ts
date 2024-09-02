@@ -396,8 +396,13 @@ export class BrokerQueue<
 
     this.refreshIdleTimeout()
 
+    const locked_until = +Date.now() + locked_message.lock_duration_ms
+
+    locked_message.message.message_annotations[Constants.lockedUntil] =
+      new Date(locked_until)
+
     locked_message.timeout.refresh()
-    return Date.now() + locked_message.lock_duration_ms
+    return locked_until
   }
 
   updateConsumerDisposition(
@@ -674,19 +679,12 @@ export class BrokerQueue<
 
       // From: azure-sdk-for-js/sdk/servicebus/service-bus/src/serviceBusMessage.ts:602
       //
-      // Constants.sequenceNumber
-      // Constants.enqueueSequenceNumber
       // Constants.messageState
       //    1 => deferred
       //    2 => scheduled
 
-      // TODO: implement this properly
       message.message_annotations[Constants.lockedUntil] =
         +new Date().getTime() + lockDurationMs
-      // console.log(
-      //   "lock token",
-      //   message.message_annotations[Constants.lockTokenMapKey],
-      // )
 
       message.delivery_count ??= 0
       message.delivery_count += 1

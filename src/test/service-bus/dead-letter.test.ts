@@ -55,12 +55,6 @@ fixturedTest(
       },
     })
 
-    console.log({
-      dlq_sn: dead_lettered_message?.sequenceNumber,
-      dlq_enqueued_sn: dead_lettered_message?.enqueuedSequenceNumber,
-      sn: message?.sequenceNumber,
-    })
-
     expect(dead_lettered_message?.sequenceNumber).toBeDefined()
     expect(dead_lettered_message?.enqueuedSequenceNumber).toStrictEqual(
       message?.sequenceNumber?.toNumber(),
