@@ -144,6 +144,9 @@ export class BrokerConsumerBalancer {
         [Constants.sequenceNumber]:
           unserializedLongToBufferLike.parse(sequence_number),
       }
+
+      m["delivery_count"] ??= 0
+
       return m as typeof m & {
         message_annotations: {
           [Constants.sequenceNumber]: BufferLikeEncodedLong

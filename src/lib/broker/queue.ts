@@ -459,12 +459,9 @@ export class BrokerQueue<
             delivery.update(true)
           }
 
-          message.delivery_count ??= 1
-          message.delivery_count += 1
-
           const maxDeliveryCount = this.queue.properties.maxDeliveryCount
 
-          if (message.delivery_count > maxDeliveryCount) {
+          if ((message.delivery_count ?? 1) >= maxDeliveryCount) {
             // TODO: add dead letter reason for max redeliveries
             this.tryDeadletterMessage(message)
           } else {
@@ -687,6 +684,9 @@ export class BrokerQueue<
       //   "lock token",
       //   message.message_annotations[Constants.lockTokenMapKey],
       // )
+
+      message.delivery_count ??= 0
+      message.delivery_count += 1
 
       // TODO: timeout
       const delivery = consumer.sender.send(message)
