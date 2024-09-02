@@ -38,6 +38,7 @@ fixturedTest(
 
     const [message] = await receiver.receiveMessages(1)
     expect(message!.body).toBe("hello world!")
+    expect(message!.scheduledEnqueueTimeUtc).toStrictEqual(schedule_at)
 
     await expect(getQueue(queue.name!)).resolves.toMatchObject({
       countDetails: {
