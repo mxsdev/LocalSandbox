@@ -7,7 +7,7 @@ fixturedTest(
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 
-    const queue = await createQueue("queue", {
+    const queue = await createQueue({
       requiresDuplicateDetection: true,
     })
 
@@ -42,7 +42,7 @@ fixturedTest(
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 
-    const queue = await createQueue("queue", {
+    const queue = await createQueue({
       requiresDuplicateDetection: true,
       duplicateDetectionHistoryTimeWindow: Temporal.Duration.from({
         milliseconds: 1,

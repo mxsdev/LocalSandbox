@@ -6,6 +6,7 @@
   "main": "index.js",
   "scripts": {
     "test": "vitest",
+    "test:e2e": "cross-env TEST_AZURE_E2E=true vitest --testTimeout=20000 --dir=./src/test/parity",
     "dev": "tsx --watch ./src/entrypoint/index.ts",
     "generate:azure": "tsx ./scripts/generate-azure-schema.ts"
   },
@@ -56,7 +57,9 @@
     "@types/swagger-schema-official": "^2.0.25",
     "bundle-require": "^5.0.0",
     "change-case": "^5.4.4",
+    "cross-env": "^7.0.3",
     "delay": "^6.0.0",
+    "dotenv": "^16.4.5",
     "handlebars": "^4.7.8",
     "js-string-escape": "^1.0.1",
     "ms": "^2.1.3",

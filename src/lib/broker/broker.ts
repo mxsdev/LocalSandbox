@@ -379,13 +379,6 @@ export class AzureServiceBusBroker extends BrokerServer {
                     messageCount,
                   )
 
-                this.logger?.debug(
-                  {
-                    peekedMessages,
-                  },
-                  "peeking messages...",
-                )
-
                 delivery.accept()
                 respondSuccess(consumer, {
                   messages: peekedMessages.map((m) => ({

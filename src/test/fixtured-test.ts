@@ -16,80 +16,184 @@ import { azure_routes } from "../lib/integration/azure/routes.js"
 import { getTestLogger } from "./get-test-logger.js"
 import { ServiceBusClient, ServiceBusClientOptions } from "@azure/service-bus"
 import { QualifiedNamespaceId } from "../lib/broker/broker.js"
+import { z } from "zod"
+import { DefaultAzureCredential } from "@azure/identity"
+import { Temporal } from "@js-temporal/polyfill"
 
-const getAzureContext = (onTestFinished: (cb: () => Promise<void>) => void) => {
+const getEnv = () => {
+  const env_schema = z
+    .object({
+      TEST_AZURE_E2E: z.coerce.boolean(),
+      AZURE_SUBSCRIPTION_ID: z.string(),
+      AZURE_RESOURCE_GROUP: z.string(),
+      AZURE_SERVICE_BUS_NAMESPACE: z.string(),
+      AZURE_SERVICE_BUS_CONNECTION_STRING: z.string(),
+    })
+    .partial()
+
+  const env = env_schema.parse(process.env)
+
+  const azure = env_schema
+    .pick({
+      TEST_AZURE_E2E: true,
+      AZURE_SUBSCRIPTION_ID: true,
+      AZURE_RESOURCE_GROUP: true,
+      AZURE_SERVICE_BUS_NAMESPACE: true,
+      AZURE_SERVICE_BUS_CONNECTION_STRING: true,
+    })
+    .required()
+    .extend({
+      TEST_AZURE_E2E: env_schema.shape.TEST_AZURE_E2E.pipe(z.literal(true)),
+    })
+    .safeParse(env).data
+
+  return {
+    ...env,
+    azure,
+  }
+}
+
+type TestEnv = ReturnType<typeof getEnv>
+
+const getAzureContext = (
+  onTestFinished: (cb: () => Promise<void>) => void,
+  env: TestEnv,
+) => {
+  const e2e_config = env.azure
+
   const store = azure_routes["store"]
 
   const port = testPort
-  const id = randomUUID()
+  const subscriptionId = e2e_config?.AZURE_SUBSCRIPTION_ID ?? randomUUID()
   const endpoint = new URL(`https://127.0.0.1:${port}/azure`)
 
   const sb_port = testServiceBusPort
-  const sb_endpoint = new URL(`https://127.0.0.1:${sb_port}`)
+  const sb_local_endpoint = new URL(`https://127.0.0.1:${sb_port}`)
 
-  const local_sandbox_credential = new LocalSandboxAzureCredential(id)
+  const local_sandbox_credential = new LocalSandboxAzureCredential(
+    subscriptionId,
+  )
+
+  const credential =
+    e2e_config?.TEST_AZURE_E2E === true
+      ? new DefaultAzureCredential()
+      : local_sandbox_credential
 
   const service_client_options: ServiceClientOptions = {
-    endpoint: endpoint.toString(),
+    ...(e2e_config?.TEST_AZURE_E2E
+      ? {}
+      : {
+          endpoint: endpoint.toString(),
+        }),
     retryOptions: {
       maxRetries: 0,
     },
   }
 
-  const subscription_client = new SubscriptionClient(local_sandbox_credential, {
+  const subscription_client = new SubscriptionClient(credential, {
     ...service_client_options,
   })
 
   const resource_client = new ResourceManagementClient(
-    local_sandbox_credential,
-    id,
+    credential,
+    subscriptionId,
     {
       ...service_client_options,
     },
   )
 
   const sb_management_client = new ServiceBusManagementClient(
-    local_sandbox_credential,
-    id,
+    credential,
+    subscriptionId,
     {
       ...service_client_options,
     },
   )
 
-  const location = "uswest2" as const
+  const location = "westus" as const
+
+  const rg_name = e2e_config?.AZURE_RESOURCE_GROUP ?? "rg" // TODO: use randomUUID()
 
   const rg = pMemoize(async () =>
-    resource_client.resourceGroups.createOrUpdate("rg", { location }),
+    e2e_config?.AZURE_RESOURCE_GROUP
+      ? resource_client.resourceGroups.get(rg_name)
+      : resource_client.resourceGroups.createOrUpdate(rg_name, { location }),
   )
 
+  const sb = {
+    default_queue_params:
+      e2e_config?.TEST_AZURE_E2E === true
+        ? ({
+            autoDeleteOnIdle: Temporal.Duration.from({
+              minutes: 5,
+            }).toString(),
+          } as SBQueue)
+        : {},
+
+    namespace_name: e2e_config?.AZURE_SERVICE_BUS_NAMESPACE ?? "namespace", // TODO: use randomUUID()
+    namespace: pMemoize(async () =>
+      e2e_config?.AZURE_SERVICE_BUS_NAMESPACE
+        ? sb_management_client.namespaces.get(
+            rg_name,
+            e2e_config.AZURE_SERVICE_BUS_NAMESPACE,
+          )
+        : sb_management_client.namespaces.beginCreateOrUpdateAndWait(
+            (await rg()).name!,
+            "namespace",
+            {
+              location,
+            },
+          ),
+    ),
+  }
+
+  const sb_connection_string = e2e_config?.TEST_AZURE_E2E
+    ? e2e_config.AZURE_SERVICE_BUS_CONNECTION_STRING
+    : `Endpoint=sb://localhost/${subscriptionId}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`
+
+  const sb_client = new ServiceBusClient(sb_connection_string, {
+    ...(e2e_config?.TEST_AZURE_E2E
+      ? {}
+      : {
+          customEndpointAddress: sb_local_endpoint.toString(),
+        }),
+    ...service_client_options,
+  })
+
   return {
+    e2e_config,
+
     baseURL: endpoint,
-    id,
-    subscription_id: id,
-    credential: local_sandbox_credential,
+    id: subscriptionId,
+    subscription_id: subscriptionId,
+    credential: credential,
     sb_management_client,
     subscription_client,
     service_client_options,
     resource_client,
     location,
-    sb_endpoint,
+    sb_endpoint: sb_local_endpoint,
     store,
 
     getSbClient: (
-      {
-        namespace_name,
-        resource_group_name,
-        subscription_id,
-      }: QualifiedNamespaceId,
+      { subscription_id }: QualifiedNamespaceId,
       opts?: ServiceBusClientOptions,
     ) => {
-      const sb_client = new ServiceBusClient(
-        `Endpoint=sb://localhost/${subscription_id}/${resource_group_name}/${namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
-        {
-          customEndpointAddress: sb_endpoint.toString(),
-          ...opts,
-        },
-      )
+      const sb_client = e2e_config?.TEST_AZURE_E2E
+        ? new ServiceBusClient(
+            `Endpoint=sb://localhost/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
+            {
+              customEndpointAddress: sb_local_endpoint.toString(),
+              ...opts,
+            },
+          )
+        : new ServiceBusClient(
+            `Endpoint=sb://localhost/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
+            {
+              customEndpointAddress: sb_local_endpoint.toString(),
+              ...opts,
+            },
+          )
 
       onTestFinished(() => sb_client.close())
 
@@ -97,16 +201,12 @@ const getAzureContext = (onTestFinished: (cb: () => Promise<void>) => void) => {
     },
 
     rg,
+    rg_name,
+
     sb: {
-      namespace: pMemoize(async () =>
-        sb_management_client.namespaces.beginCreateOrUpdateAndWait(
-          (await rg()).name!,
-          "namespace",
-          {
-            location,
-          },
-        ),
-      ),
+      ...sb,
+      sb_connection_string,
+      sb_client,
     },
   }
 }
@@ -114,49 +214,36 @@ const getAzureContext = (onTestFinished: (cb: () => Promise<void>) => void) => {
 type AzureContext = ReturnType<typeof getAzureContext>
 
 const getAzureContextWithQueueFixtures = async (azure: AzureContext) => {
-  const { resource_client, sb_management_client, subscription_id, location } =
-    azure
+  const {
+    sb_management_client,
+    sb: { default_queue_params, namespace_name },
+    rg_name,
+    e2e_config,
+  } = azure
 
-  const resource_group = await resource_client.resourceGroups.createOrUpdate(
-    "rg",
-    {
-      location,
-    },
-  )
+  if (!e2e_config) {
+    // ensure resource group, namespace are created
+    await azure.rg()
+    await azure.sb.namespace()
+  }
 
-  const namespace =
-    await sb_management_client.namespaces.beginCreateOrUpdateAndWait(
-      resource_group.name!,
-      "namespace",
+  const createQueue = async (parameters: SBQueue) =>
+    sb_management_client.queues.createOrUpdate(
+      rg_name,
+      namespace_name,
+      randomUUID(),
       {
-        location,
+        ...default_queue_params,
+        ...parameters,
       },
     )
 
-  const createQueue = async (queue_name: string, parameters: SBQueue) =>
-    sb_management_client.queues.createOrUpdate(
-      resource_group.name!,
-      namespace.name!,
-      queue_name,
-      parameters,
-    )
-
   const getQueue = async (queue_name: string) =>
-    sb_management_client.queues.get(
-      resource_group.name!,
-      namespace.name!,
-      queue_name,
-    )
+    sb_management_client.queues.get(rg_name, namespace_name, queue_name)
 
   return {
     ...azure,
-    resource_group,
-    namespace,
-    sb_client: azure.getSbClient({
-      namespace_name: namespace.name!,
-      resource_group_name: resource_group.name!,
-      subscription_id,
-    }),
+    sb_client: azure.sb.sb_client,
     createQueue,
     getQueue,
   }
@@ -164,6 +251,7 @@ const getAzureContextWithQueueFixtures = async (azure: AzureContext) => {
 
 export type TestContext = {
   azure: ReturnType<typeof getAzureContext>
+  env: TestEnv
   azure_rg: Awaited<ReturnType<AzureContext["rg"]>>
   azure_sb_namespace: Awaited<ReturnType<AzureContext["sb"]["namespace"]>>
   azure_store: IntegrationStore<typeof azure_routes>
@@ -172,8 +260,11 @@ export type TestContext = {
 }
 
 export const fixturedTest = test.extend<TestContext>({
-  azure: async ({ onTestFinished }, use) => {
-    await use(getAzureContext(onTestFinished))
+  env: async ({}, use) => {
+    await use(getEnv())
+  },
+  azure: async ({ onTestFinished, env }, use) => {
+    await use(getAzureContext(onTestFinished, env))
   },
   // azure_queue: async ({ azure, logger }, use) => {},
   azure_rg: async ({ azure }, use) => {

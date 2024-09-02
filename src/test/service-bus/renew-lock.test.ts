@@ -9,7 +9,7 @@ fixturedTest(
 
     const lockDurationMs = 500
 
-    const queue = await createQueue("queue", {
+    const queue = await createQueue({
       lockDuration: Temporal.Duration.from({
         milliseconds: lockDurationMs,
       }).toString(),

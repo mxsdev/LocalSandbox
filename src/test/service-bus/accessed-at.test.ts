@@ -5,7 +5,7 @@ fixturedTest(
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue, getQueue } = azure_queue
 
-    const queue = await createQueue("queue", {})
+    const queue = await createQueue({})
 
     expect(queue.accessedAt).toBeUndefined()
 
@@ -31,7 +31,7 @@ fixturedTest(
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue, getQueue } = azure_queue
 
-    const queue = await createQueue("queue", {})
+    const queue = await createQueue({})
 
     expect(queue.accessedAt).toBeUndefined()
 

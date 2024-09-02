@@ -6,9 +6,9 @@ fixturedTest(
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 
-    const dlq = await createQueue("dlq", {})
+    const dlq = await createQueue({})
 
-    const queue = await createQueue("queue", {
+    const queue = await createQueue({
       deadLetteringOnMessageExpiration: true,
       forwardDeadLetteredMessagesTo: dlq.name!,
     })

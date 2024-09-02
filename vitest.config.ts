@@ -5,7 +5,7 @@ import tsconfigPaths from "vite-tsconfig-paths"
 export default defineConfig({
   plugins: [tsconfigPaths()],
   test: {
-    setupFiles: ["./src/test/setup.ts"],
+    setupFiles: ["dotenv/config", "./src/test/setup.ts"],
     exclude: [
       "**/node_modules/**",
       "**/dist/**",
