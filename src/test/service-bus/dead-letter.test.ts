@@ -23,42 +23,53 @@ fixturedTest(
       body: "hello world!",
     })
 
-    {
-      const receiver = sb_client.createReceiver(queue.name!)
-      onTestFinished(() => receiver.close())
+    const receiver = sb_client.createReceiver(queue.name!)
+    onTestFinished(() => receiver.close())
 
-      const [message] = await receiver.receiveMessages(1)
-      expect(message!.body).toBe("hello world!")
+    const [message] = await receiver.receiveMessages(1)
+    expect(message!.body).toBe("hello world!")
+    expect(message?.sequenceNumber).toBeDefined()
 
-      await receiver.deadLetterMessage(message!, {
-        deadLetterReason: "dead letter reason",
-        deadLetterErrorDescription: "dead letter error description",
-      })
-    }
+    await receiver.deadLetterMessage(message!, {
+      deadLetterReason: "dead letter reason",
+      deadLetterErrorDescription: "dead letter error description",
+    })
 
-    {
-      const receiver = sb_client.createReceiver(dlq.name!)
-      onTestFinished(() => receiver.close())
+    const receiver_dlq = sb_client.createReceiver(dlq.name!)
+    onTestFinished(() => receiver_dlq.close())
 
-      const [message] = await receiver.receiveMessages(1)
-      expect(message!.body).toBe("hello world!")
+    const [dead_lettered_message] = await receiver_dlq.receiveMessages(1)
+    expect(dead_lettered_message!.body).toBe("hello world!")
 
-      await receiver.completeMessage(message!)
+    await receiver_dlq.completeMessage(dead_lettered_message!)
 
-      expect(message?.deadLetterSource).toBe(queue.name!)
-      expect(message?.deadLetterReason).toBe("dead letter reason")
-      expect(message?.deadLetterErrorDescription).toBe(
-        "dead letter error description",
-      )
+    expect(dead_lettered_message?.deadLetterSource).toBe(queue.name!)
+    expect(dead_lettered_message?.deadLetterReason).toBe("dead letter reason")
+    expect(dead_lettered_message?.deadLetterErrorDescription).toBe(
+      "dead letter error description",
+    )
 
-      await expect(getQueue(queue.name!)).resolves.toMatchObject({
-        countDetails: {
-          transferDeadLetterMessageCount: 1,
-        },
-      })
+    await expect(getQueue(queue.name!)).resolves.toMatchObject({
+      countDetails: {
+        transferDeadLetterMessageCount: 1,
+      },
+    })
 
-      // TODO: ensure dead letter options are present
-    }
+    console.log({
+      dlq_sn: dead_lettered_message?.sequenceNumber,
+      dlq_enqueued_sn: dead_lettered_message?.enqueuedSequenceNumber,
+      sn: message?.sequenceNumber,
+    })
+
+    expect(dead_lettered_message?.sequenceNumber).toBeDefined()
+    expect(dead_lettered_message?.enqueuedSequenceNumber).toStrictEqual(
+      message?.sequenceNumber?.toNumber(),
+    )
+    expect(dead_lettered_message?.sequenceNumber).not.toStrictEqual(
+      message?.sequenceNumber,
+    )
+
+    // TODO: ensure dead letter options are present
   },
 )
 

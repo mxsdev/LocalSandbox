@@ -178,7 +178,7 @@ export class BrokerQueue<
 
       message.message_annotations[Constants.deadLetterDescription] = description
 
-      this.consumer_balancer.deliverMessagesToQueue(dlq_id, message)
+      this.consumer_balancer.sendMessagesToQueue(dlq_id, message)
       this.num_messages_transferred_to_dlq++
     }
   }
@@ -669,13 +669,11 @@ export class BrokerQueue<
 
       // From: azure-sdk-for-js/sdk/servicebus/service-bus/src/serviceBusMessage.ts:602
       //
-      // Constants.enqueuedTime
       // Constants.sequenceNumber
       // Constants.enqueueSequenceNumber
       // Constants.messageState
       //    1 => deferred
       //    2 => scheduled
-      // Constants.deadLetterSource
 
       // TODO: implement this properly
       message.message_annotations[Constants.lockedUntil] =

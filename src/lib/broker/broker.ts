@@ -324,7 +324,7 @@ export class AzureServiceBusBroker extends BrokerServer {
             case Constants.operations.scheduleMessage:
               {
                 const sequenceNumbers =
-                  this.consumer_balancer.deliverMessagesToQueue(
+                  this.consumer_balancer.sendMessagesToQueue(
                     queue,
                     ...parsed.data.body.messages.flatMap(
                       ({ message: buffer, "message-id": mid }) =>
@@ -496,7 +496,7 @@ export class AzureServiceBusBroker extends BrokerServer {
             "delivering message batch",
           )
 
-          this.consumer_balancer.deliverMessagesToQueue(
+          this.consumer_balancer.sendMessagesToQueue(
             queue,
             ...messages_to_enqueue.map((m) => {
               m["message_id"] ??= generate_uuid()

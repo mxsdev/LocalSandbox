@@ -34,6 +34,13 @@ export class BrokerConsumerBalancer {
   > = {}
   private next_sequence_number = new Long(0)
 
+  // TODO: check if sequence number is allocated per-queue or per-namespace
+  allocateSequenceNumber() {
+    const sequence_number = this.next_sequence_number
+    this.next_sequence_number = this.next_sequence_number.add(1)
+    return sequence_number
+  }
+
   constructor(
     private readonly store: BrokerStore,
     private readonly logger?: Logger,
@@ -108,7 +115,7 @@ export class BrokerConsumerBalancer {
       .filter((v): v is Exclude<typeof v, undefined> => !!v)
   }
 
-  deliverMessagesToQueue(
+  sendMessagesToQueue(
     queueId: QualifiedQueueId | string,
     ...message: ParsedTypedRheaMessageWithId[]
   ): BufferLikeEncodedLong[] {
@@ -116,9 +123,7 @@ export class BrokerConsumerBalancer {
     const queue = this.getQueueFromStoreOrThrow(queueId)
 
     const messages = message.map((m) => {
-      const sequence_number = this.next_sequence_number
-      this.next_sequence_number = this.next_sequence_number.add(1)
-
+      const sequence_number = this.allocateSequenceNumber()
       const msg = m as Message
 
       if (
@@ -139,8 +144,16 @@ export class BrokerConsumerBalancer {
         msg.absolute_expiry_time = creation_time
       }
 
+      const pre_exisitng_sequence_number =
+        m["message_annotations"][Constants.sequenceNumber]
+
       m["message_annotations"] = {
         ...m["message_annotations"],
+        ...(pre_exisitng_sequence_number != null
+          ? {
+              [Constants.enqueueSequenceNumber]: pre_exisitng_sequence_number,
+            }
+          : {}),
         [Constants.sequenceNumber]:
           unserializedLongToBufferLike.parse(sequence_number),
       }
