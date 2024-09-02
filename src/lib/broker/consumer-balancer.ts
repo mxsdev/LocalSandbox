@@ -22,24 +22,7 @@ import {
 import { Temporal } from "@js-temporal/polyfill"
 
 export class BrokerConsumerBalancer {
-  private queues: Record<
-    string,
-    BrokerQueue<
-      ParsedTypedRheaMessageWithId & {
-        message_annotations: {
-          [Constants.sequenceNumber]: BufferLikeEncodedLong
-        }
-      }
-    >
-  > = {}
-  private next_sequence_number = new Long(1)
-
-  // TODO: check if sequence number is allocated per-queue or per-namespace
-  allocateSequenceNumber() {
-    const sequence_number = this.next_sequence_number
-    this.next_sequence_number = this.next_sequence_number.add(1)
-    return sequence_number
-  }
+  private queues: Record<string, BrokerQueue<ParsedTypedRheaMessageWithId>> = {}
 
   constructor(
     private readonly store: BrokerStore,
@@ -144,36 +127,24 @@ export class BrokerConsumerBalancer {
         msg.absolute_expiry_time = creation_time
       }
 
-      m["message_annotations"] = {
-        ...m["message_annotations"],
+      // m["message_annotations"] = {
+      //   ...m["message_annotations"],
 
-        [Constants.sequenceNumber]:
-          m["message_annotations"][Constants.sequenceNumber] ??
-          unserializedLongToBufferLike.parse(this.allocateSequenceNumber()),
-
-        // TODO: figure out when "transferring" occurs to re-allocate sequence #
-        //
-        // ...(pre_exisitng_sequence_number != null
-        //   ? {
-        //       [Constants.enqueueSequenceNumber]: pre_exisitng_sequence_number,
-        //     }
-        //   : {}),
-        // [Constants.sequenceNumber]:
-        //   unserializedLongToBufferLike.parse(sequence_number),
-      }
+      //   [Constants.sequenceNumber]:
+      //     m["message_annotations"][Constants.sequenceNumber] ??
+      //     unserializedLongToBufferLike.parse(this.allocateSequenceNumber()),
+      // }
 
       m["delivery_count"] ??= 0
 
-      return m as typeof m & {
-        message_annotations: {
-          [Constants.sequenceNumber]: BufferLikeEncodedLong
-        }
-      }
+      return m
     })
 
-    this.getOrCreate(queue.id).scheduleMessages(...messages)
+    const result_messages = this.getOrCreate(queue.id).scheduleMessages(
+      ...messages,
+    )
 
-    const sequence_numbers = messages.map(
+    const sequence_numbers = result_messages.map(
       (m) => m.message_annotations[Constants.sequenceNumber],
     )
 

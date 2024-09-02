@@ -10,11 +10,16 @@ import {
   getQueueFromStoreOrThrow,
 } from "./util.js"
 import Long from "long"
-import { BufferLikeEncodedLong, serializedLong } from "../util/long.js"
+import {
+  BufferLikeEncodedLong,
+  serializedLong,
+  unserializedLongToBufferLike,
+} from "../util/long.js"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import { uuidToString } from "../util/uuid.js"
 import { MessageCountDetails } from "@azure/arm-servicebus"
 import { BrokerConstants } from "./constants.js"
+import { z } from "zod"
 
 interface QueueConsumerDeliveryInfo<M> {
   delivery: Delivery
@@ -23,6 +28,17 @@ interface QueueConsumerDeliveryInfo<M> {
 
 export type DeliveryTag = Pick<Delivery, "tag"> & Partial<Pick<Delivery, "id">>
 export type SenderName = Pick<Sender, "name">
+
+type MessageWithProperties<Base extends Message, MessageAnnotations> = Base & {
+  message_annotations: MessageAnnotations
+}
+
+type MessageWithSequenceNumber<Base extends Message> = MessageWithProperties<
+  Base,
+  {
+    [Constants.sequenceNumber]: BufferLikeEncodedLong
+  }
+>
 
 class DeliveryMap<T> {
   private _deliveries: Record<string, T> = {}
@@ -72,29 +88,45 @@ interface QueueConsumer<M> {
   schedule_for_deletion: boolean
 }
 
+type ScheduledMessage<M extends Message> = MessageWithSequenceNumber<M>
+
 export class BrokerQueue<
   M extends Message & {
     message_id: string
-    message_annotations: {
-      [K in (typeof Constants)["sequenceNumber"]]: BufferLikeEncodedLong
-    }
+    message_annotations?: Record<string, any>
   },
 > {
-  private _messages = new Deque<{ message: M; scheduled_at: Date }>()
+  private _messages = new Deque<{
+    message: ScheduledMessage<M>
+    scheduled_at: Date
+  }>()
 
-  private deferred_messages = new Map<string, M>()
+  private deferred_messages = new Map<string, ScheduledMessage<M>>()
   private locked_messages = new Map<
     string,
-    { message: M; timeout: NodeJS.Timeout; lock_duration_ms: number }
+    {
+      message: ScheduledMessage<M>
+      timeout: NodeJS.Timeout
+      lock_duration_ms: number
+    }
   >()
   private scheduled_messages: Record<
     string,
-    { timeout: NodeJS.Timeout; message: M }
+    { timeout: NodeJS.Timeout; message: ScheduledMessage<M> }
   > = {}
 
   private message_expiration_timeouts: Record<string, NodeJS.Timeout> = {}
 
-  private consumers: Record<string, QueueConsumer<M>> = {}
+  private consumers: Record<string, QueueConsumer<ScheduledMessage<M>>> = {}
+
+  private next_sequence_number = new Long(1)
+
+  // TODO: check if sequence number is allocated per-queue or per-namespace
+  private allocateSequenceNumber() {
+    const sequence_number = this.next_sequence_number
+    this.next_sequence_number = this.next_sequence_number.add(1)
+    return sequence_number
+  }
 
   private num_messages_transferred_to_dlq: number = 0
 
@@ -114,7 +146,7 @@ export class BrokerQueue<
     return false
   }
 
-  private pushMessage(message: M, place: "front" | "back") {
+  private pushMessage(message: ScheduledMessage<M>, place: "front" | "back") {
     message.message_annotations[Constants.enqueuedTime] = new Date()
     message.message_annotations[Constants.messageState] ??=
       BrokerConstants.messageState.active
@@ -125,11 +157,11 @@ export class BrokerQueue<
     })
   }
 
-  private enqueue(...messages: M[]) {
+  private enqueue(...messages: ScheduledMessage<M>[]) {
     messages.forEach((message) => this.pushMessage(message, "front"))
   }
 
-  private enqueueFront(...messages: M[]) {
+  private enqueueFront(...messages: ScheduledMessage<M>[]) {
     messages.forEach((message) => this.pushMessage(message, "back"))
   }
 
@@ -166,7 +198,11 @@ export class BrokerQueue<
     return res
   }
 
-  tryDeadletterMessage(message: M, reason?: string, description?: string) {
+  private tryDeadletterMessage(
+    message: ScheduledMessage<M>,
+    reason?: string,
+    description?: string,
+  ) {
     const queue = this.queue
 
     if (queue.properties.forwardDeadLetteredMessagesTo === queue.name) {
@@ -195,8 +231,21 @@ export class BrokerQueue<
     }
   }
 
-  scheduleMessages(...messages: M[]) {
-    const messages_for_immediate_delivery: M[] = []
+  scheduleMessages(...sourceMessages: M[]) {
+    const messages = sourceMessages.map((msg) => {
+      msg.message_annotations ??= {}
+      msg.message_annotations[Constants.sequenceNumber] ??=
+        unserializedLongToBufferLike.parse(this.allocateSequenceNumber())
+      return msg as typeof msg & {
+        message_annotations: {
+          [Constants.sequenceNumber]: z.output<
+            typeof unserializedLongToBufferLike
+          >
+        }
+      }
+    })
+
+    const messages_for_immediate_delivery: ScheduledMessage<M>[] = []
 
     const queue = this.queue
 
@@ -289,6 +338,8 @@ export class BrokerQueue<
 
     this.enqueue(...messages_for_immediate_delivery)
     this.tryFlush()
+
+    return messages
   }
 
   private listNonExpiredMessages(args: { include_locked: boolean }) {
@@ -367,7 +418,7 @@ export class BrokerQueue<
     return true
   }
 
-  scheduleMessagesInFront(...message: M[]) {
+  private scheduleMessagesInFront(...message: ScheduledMessage<M>[]) {
     this.enqueueFront(...message)
     this.tryFlush()
   }
@@ -662,7 +713,7 @@ export class BrokerQueue<
   }
 
   private tryFlush() {
-    let consumer: QueueConsumer<M> | undefined
+    let consumer: QueueConsumer<ScheduledMessage<M>> | undefined
 
     const lockDurationMs = Temporal.Duration.from(
       this.queue.properties.lockDuration,
@@ -673,7 +724,6 @@ export class BrokerQueue<
     while (
       (consumer = Object.values(this.consumers).find(
         (consumer) =>
-          // !consumer.current_delivery &&
           consumer.sender.sendable() &&
           consumer.sender.is_open() &&
           consumer.sender.is_remote_open() &&
@@ -724,12 +774,6 @@ export class BrokerQueue<
         }, lockDurationMs),
       })
 
-      // From: azure-sdk-for-js/sdk/servicebus/service-bus/src/serviceBusMessage.ts:602
-      //
-      // Constants.messageState
-      //    1 => deferred
-      //    2 => scheduled
-
       message.message_annotations[Constants.lockedUntil] =
         +new Date().getTime() + lockDurationMs
 
@@ -744,7 +788,6 @@ export class BrokerQueue<
           delivery_id: delivery.id,
           consumer: consumer.sender.name,
           delivery_tag: Buffer.from(delivery.tag).length,
-          // delivery: consumer.current_delivery?.delivery.id,
         },
         "Sent message",
       )

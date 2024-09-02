@@ -1,3 +1,4 @@
+import Long from "long"
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
@@ -29,6 +30,7 @@ fixturedTest(
 
       const [message] = await receiver.receiveMessages(1)
       expect(message!.body).toBe("hello world!")
+      expect(message!.sequenceNumber).toEqual(new Long(1))
 
       await receiver.completeMessage(message!)
     }
@@ -39,6 +41,7 @@ fixturedTest(
 
       const [message] = await receiver.receiveMessages(1)
       expect(message!.body).toBe("hello world2!")
+      expect(message!.sequenceNumber).toEqual(new Long(1))
 
       await receiver.completeMessage(message!)
     }

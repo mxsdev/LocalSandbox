@@ -262,6 +262,17 @@ export class AzureServiceBusBroker extends BrokerServer {
             return
           }
 
+          const queue = this.link_queue.get(receiver)
+
+          if (!queue) {
+            this.logger?.error(
+              "Could not find queue for receiver, did the handshake go through?",
+            )
+            throw new Error(
+              "Could not find queue for receiver, did the handshake go through?",
+            )
+          }
+
           if (
             parsed.data.operation ===
             BrokerConstants.debug.operations.setSequenceNumber
@@ -272,7 +283,9 @@ export class AzureServiceBusBroker extends BrokerServer {
               `Setting broker sequence number to ${sequenceNumber.toString()}`,
             )
 
-            this.consumer_balancer["next_sequence_number"] = sequenceNumber
+            this.consumer_balancer["getOrCreate"](
+              this.consumer_balancer["getQueueFromStoreOrThrow"](queue).id,
+            )["next_sequence_number"] = sequenceNumber
 
             delivery.accept()
             return
@@ -296,17 +309,6 @@ export class AzureServiceBusBroker extends BrokerServer {
               "Could not reply to queue consumer",
             )
             throw new Error("Could not reply to queue consumer")
-          }
-
-          const queue = this.link_queue.get(receiver)
-
-          if (!queue) {
-            this.logger?.error(
-              "Could not find queue for receiver, did the handshake go through?",
-            )
-            throw new Error(
-              "Could not find queue for receiver, did the handshake go through?",
-            )
           }
 
           this.logger?.debug(
