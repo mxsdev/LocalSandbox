@@ -110,16 +110,21 @@ export class BrokerQueue<
     return false
   }
 
+  private pushMessage(message: M, place: "front" | "back") {
+    message.message_annotations[Constants.enqueuedTime] = new Date()
+
+    this._messages[place === "front" ? "pushFront" : "pushBack"]({
+      message,
+      scheduled_at: message.message_annotations[Constants.enqueuedTime],
+    })
+  }
+
   private enqueue(...messages: M[]) {
-    messages.forEach((message) =>
-      this._messages.pushFront({ message, scheduled_at: new Date() }),
-    )
+    messages.forEach((message) => this.pushMessage(message, "front"))
   }
 
   private enqueueFront(...messages: M[]) {
-    messages.forEach((message) =>
-      this._messages.pushBack({ message, scheduled_at: new Date() }),
-    )
+    messages.forEach((message) => this.pushMessage(message, "back"))
   }
 
   private dequeue() {

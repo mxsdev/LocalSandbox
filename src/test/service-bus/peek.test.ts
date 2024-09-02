@@ -62,6 +62,7 @@ fixturedTest(
     {
       const [message1, message2] = await receiver.peekMessages(2)
       expect(message1!.body).toBe("hello world!")
+      expect(message1!.enqueuedTimeUtc).toBeTruthy()
       expect(message2!.body).toBe("hello world2!")
     }
   },
