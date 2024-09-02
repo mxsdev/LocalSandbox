@@ -40,8 +40,12 @@ azure_routes.implementRoute(
         properties: {
           ...parameters.properties,
           // TODO: automate this
-          createdAt: new Date().toISOString(),
-          messageCount: 0,
+          createdAt:
+            parameters.properties?.createdAt ?? new Date().toISOString(),
+          accessedAt:
+            parameters.properties?.accessedAt ??
+            // TODO: set this (based on location TZ) to 0001-01-01 00:00:00.000Z
+            new Date(-62135568422000).toISOString(),
         },
       })
       .onAllConflictMerge()

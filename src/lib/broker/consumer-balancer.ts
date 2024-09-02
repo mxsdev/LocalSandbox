@@ -32,7 +32,7 @@ export class BrokerConsumerBalancer {
       }
     >
   > = {}
-  private next_sequence_number = new Long(0)
+  private next_sequence_number = new Long(1)
 
   // TODO: check if sequence number is allocated per-queue or per-namespace
   allocateSequenceNumber() {
@@ -123,7 +123,7 @@ export class BrokerConsumerBalancer {
     const queue = this.getQueueFromStoreOrThrow(queueId)
 
     const messages = message.map((m) => {
-      const sequence_number = this.allocateSequenceNumber()
+      // const sequence_number = this.allocateSequenceNumber()
       const msg = m as Message
 
       if (
@@ -144,18 +144,22 @@ export class BrokerConsumerBalancer {
         msg.absolute_expiry_time = creation_time
       }
 
-      const pre_exisitng_sequence_number =
-        m["message_annotations"][Constants.sequenceNumber]
-
       m["message_annotations"] = {
         ...m["message_annotations"],
-        ...(pre_exisitng_sequence_number != null
-          ? {
-              [Constants.enqueueSequenceNumber]: pre_exisitng_sequence_number,
-            }
-          : {}),
+
         [Constants.sequenceNumber]:
-          unserializedLongToBufferLike.parse(sequence_number),
+          m["message_annotations"][Constants.sequenceNumber] ??
+          unserializedLongToBufferLike.parse(this.allocateSequenceNumber()),
+
+        // TODO: figure out when "transferring" occurs to re-allocate sequence #
+        //
+        // ...(pre_exisitng_sequence_number != null
+        //   ? {
+        //       [Constants.enqueueSequenceNumber]: pre_exisitng_sequence_number,
+        //     }
+        //   : {}),
+        // [Constants.sequenceNumber]:
+        //   unserializedLongToBufferLike.parse(sequence_number),
       }
 
       m["delivery_count"] ??= 0

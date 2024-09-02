@@ -116,7 +116,7 @@ export class BrokerQueue<
 
   private pushMessage(message: M, place: "front" | "back") {
     message.message_annotations[Constants.enqueuedTime] = new Date()
-    message.message_annotations[Constants.messageState] =
+    message.message_annotations[Constants.messageState] ??=
       BrokerConstants.messageState.active
 
     this._messages[place === "front" ? "pushFront" : "pushBack"]({
@@ -186,11 +186,12 @@ export class BrokerQueue<
       message.message_annotations[Constants.deadLetterSource] = queue.name!
 
       message.message_annotations[Constants.deadLetterReason] = reason
-
       message.message_annotations[Constants.deadLetterDescription] = description
 
       this.consumer_balancer.sendMessagesToQueue(dlq_id, message)
-      this.num_messages_transferred_to_dlq++
+
+      // TODO: figure out when "transfers" occur
+      // this.num_messages_transferred_to_dlq++
     }
   }
 
@@ -321,7 +322,8 @@ export class BrokerQueue<
       activeMessageCount: non_expired_messages.length,
       scheduledMessageCount: non_expired_messages.filter(
         (message) =>
-          message.message_annotations?.[Constants.scheduledEnqueueTime] != null,
+          message.message_annotations?.[Constants.scheduledEnqueueTime] !=
+            null && !this.locked_messages.has(message.message_id),
       ).length,
       transferDeadLetterMessageCount: this.num_messages_transferred_to_dlq,
       // TODO: implement this
@@ -723,11 +725,11 @@ export class BrokerQueue<
       message.message_annotations[Constants.lockedUntil] =
         +new Date().getTime() + lockDurationMs
 
-      message.delivery_count ??= 0
-      message.delivery_count += 1
-
       // TODO: timeout
       const delivery = consumer.sender.send(message)
+
+      message.delivery_count ??= 0
+      message.delivery_count += 1
 
       this.logger?.debug(
         {

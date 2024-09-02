@@ -22,7 +22,7 @@ fixturedTest(
     onTestFinished(() => receiver.close())
 
     const [message] = await receiver.receiveMessages(1)
-    expect(message!.sequenceNumber).toEqual(new Long(0))
+    expect(message!.sequenceNumber).toEqual(new Long(1))
   },
 )
 
