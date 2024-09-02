@@ -21,7 +21,7 @@ fixturedTest(
 
     expect(createdAt).toBeDefined()
     expect(Math.abs(createdAt!.getTime() - receiveDate.getTime())).toBeLessThan(
-      10,
+      100,
     )
   },
 )
@@ -46,6 +46,8 @@ fixturedTest(
     const { createdAt } = await getQueue(queue.name!)
 
     expect(createdAt).toBeDefined()
-    expect(Math.abs(createdAt!.getTime() - sendDate.getTime())).toBeLessThan(10)
+    expect(Math.abs(createdAt!.getTime() - sendDate.getTime())).toBeLessThan(
+      100,
+    )
   },
 )

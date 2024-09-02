@@ -28,7 +28,7 @@ fixturedTest(
 
     await expect(getQueue(queue.name!)).resolves.toMatchObject({
       countDetails: {
-        activeMessageCount: 0,
+        activeMessageCount: 1,
       },
     })
 

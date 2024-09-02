@@ -26,6 +26,14 @@ fixturedTest(
       )
       expect(deferred_message).toBeTruthy()
       expect(deferred_message).toMatchObject({ body: "hello world!" })
+      expect(deferred_message?.state).toBe("deferred")
+    }
+
+    {
+      const messages = await receiver.receiveMessages(1, {
+        maxWaitTimeInMs: 0,
+      })
+      expect(messages).toHaveLength(0)
     }
   },
 )

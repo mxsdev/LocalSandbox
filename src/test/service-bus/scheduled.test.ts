@@ -34,11 +34,17 @@ fixturedTest(
     const receiver = sb_client.createReceiver(queue.name!)
     onTestFinished(() => receiver.close())
 
+    {
+      const [message] = await receiver.peekMessages(1)
+      expect(message!.state).toBe("scheduled")
+    }
+
     expect(Date.now() < schedule_at.getTime()).toBe(true)
 
     const [message] = await receiver.receiveMessages(1)
     expect(message!.body).toBe("hello world!")
     expect(message!.scheduledEnqueueTimeUtc).toStrictEqual(schedule_at)
+    expect(message!.state).toBe("active")
 
     await expect(getQueue(queue.name!)).resolves.toMatchObject({
       countDetails: {

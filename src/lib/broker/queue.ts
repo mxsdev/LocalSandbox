@@ -14,6 +14,7 @@ import { BufferLikeEncodedLong, serializedLong } from "../util/long.js"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import { uuidToString } from "../util/uuid.js"
 import { MessageCountDetails } from "@azure/arm-servicebus"
+import { BrokerConstants } from "./constants.js"
 
 interface QueueConsumerDeliveryInfo<M> {
   delivery: Delivery
@@ -86,8 +87,11 @@ export class BrokerQueue<
     string,
     { message: M; timeout: NodeJS.Timeout; lock_duration_ms: number }
   >()
+  private scheduled_messages: Record<
+    string,
+    { timeout: NodeJS.Timeout; message: M }
+  > = {}
 
-  private message_schedule_timeouts: Record<string, NodeJS.Timeout> = {}
   private message_expiration_timeouts: Record<string, NodeJS.Timeout> = {}
 
   private consumers: Record<string, QueueConsumer<M>> = {}
@@ -112,6 +116,8 @@ export class BrokerQueue<
 
   private pushMessage(message: M, place: "front" | "back") {
     message.message_annotations[Constants.enqueuedTime] = new Date()
+    message.message_annotations[Constants.messageState] =
+      BrokerConstants.messageState.active
 
     this._messages[place === "front" ? "pushFront" : "pushBack"]({
       message,
@@ -254,14 +260,17 @@ export class BrokerQueue<
           .parse(message.message_annotations[Constants.sequenceNumber])
           .toString()
 
-        this.message_schedule_timeouts[message_sequence_number_id] = setTimeout(
-          () => {
-            delete this.message_schedule_timeouts[message_sequence_number_id]
+        message.message_annotations[Constants.messageState] =
+          BrokerConstants.messageState.scheduled
+
+        this.scheduled_messages[message_sequence_number_id] = {
+          timeout: setTimeout(() => {
+            delete this.scheduled_messages[message_sequence_number_id]
             this.enqueue(message)
             this.tryFlush()
-          },
-          scheduled_enqueued_time.getTime() - Date.now(),
-        )
+          }, scheduled_enqueued_time.getTime() - Date.now()),
+          message,
+        }
       } else {
         messages_for_immediate_delivery.push(message)
       }
@@ -271,36 +280,39 @@ export class BrokerQueue<
     this.tryFlush()
   }
 
-  private listNonExpiredMessages() {
-    return this._messages
-      .toArray()
-      .map(({ message }) => message)
-      .filter(
-        (m) =>
-          !m.absolute_expiry_time ||
-          new Date(m.absolute_expiry_time) > new Date(),
-      )
+  private listNonExpiredMessages(args: { include_locked: boolean }) {
+    return [
+      ...this._messages.toArray().map(({ message }) => message),
+      ...(args.include_locked
+        ? [...this.locked_messages.values()].map(({ message }) => message)
+        : []),
+      ...[...this.deferred_messages.values()],
+      ...[...Object.values(this.scheduled_messages)].map(
+        ({ message }) => message,
+      ),
+    ].filter(
+      (m) =>
+        !m.absolute_expiry_time ||
+        new Date(m.absolute_expiry_time) > new Date(),
+    )
   }
 
   // TODO: which messages should/shouldn't be included in the count??
   get messageCount() {
-    return this.listNonExpiredMessages().length + this.locked_messages.size
+    return this.listNonExpiredMessages({ include_locked: true }).length
   }
 
   get messageCountDetails(): MessageCountDetails {
-    const non_expired_messages = this.listNonExpiredMessages()
-    const locked_messages = [...this.locked_messages.values()].map(
-      ({ message }) => message,
-    )
+    const non_expired_messages = this.listNonExpiredMessages({
+      include_locked: true,
+    })
 
     return {
       activeMessageCount: non_expired_messages.length,
-      scheduledMessageCount:
-        Object.keys(this.message_schedule_timeouts).length +
-        [...non_expired_messages, ...locked_messages].filter(
-          (message) =>
-            !!message.message_annotations?.[Constants.scheduledEnqueueTime],
-        ).length,
+      scheduledMessageCount: non_expired_messages.filter(
+        (message) =>
+          message.message_annotations?.[Constants.scheduledEnqueueTime] != null,
+      ).length,
       transferDeadLetterMessageCount: this.num_messages_transferred_to_dlq,
       // TODO: implement this
       deadLetterMessageCount: 0,
@@ -312,25 +324,34 @@ export class BrokerQueue<
   peekMessages(messageCount: number) {
     this.refreshIdleTimeout()
 
+    const peekable_messages = this.listNonExpiredMessages({
+      include_locked: false,
+    }).sort(
+      (a, b) =>
+        serializedLong
+          .parse(b.message_annotations[Constants.sequenceNumber])
+          .toNumber() -
+        serializedLong
+          .parse(a.message_annotations[Constants.sequenceNumber])
+          .toNumber(),
+    )
+
     // TODO: introduce more efficient implementation...
-    return this._messages
-      .toArray()
-      .map(({ message }) => message)
-      .slice(this._messages.size() - messageCount, this._messages.size())
+    return peekable_messages
+      .slice(peekable_messages.length - messageCount, peekable_messages.length)
       .reverse()
   }
 
   cancelScheduledMessage(sequence_number: Long): boolean {
     this.refreshIdleTimeout()
 
-    const existing_timeout =
-      this.message_schedule_timeouts[sequence_number.toString()]
+    const existing_timeout = this.scheduled_messages[sequence_number.toString()]
 
     if (!existing_timeout) {
       return false
     }
 
-    clearTimeout(existing_timeout)
+    clearTimeout(existing_timeout.timeout)
     return true
   }
 
@@ -455,18 +476,22 @@ export class BrokerQueue<
 
           this.locked_messages.delete(message.message_id)
 
+          if (consumer.sender.rcv_settle_mode === 1) {
+            delivery.update(true)
+          }
+
           // take this as wanting to defer
           if (delivery.remote_state?.["undeliverable_here"]) {
+            message.message_annotations[Constants.messageState] =
+              BrokerConstants.messageState.deferred
+
             this.deferred_messages.set(
               serializedLong
                 .parse(message.message_annotations[Constants.sequenceNumber])
                 .toString(),
               message,
             )
-          }
-
-          if (consumer.sender.rcv_settle_mode === 1) {
-            delivery.update(true)
+            return
           }
 
           const maxDeliveryCount = this.queue.properties.maxDeliveryCount
@@ -606,7 +631,9 @@ export class BrokerQueue<
   }
 
   close() {
-    Object.values(this.message_schedule_timeouts).forEach(clearTimeout)
+    Object.values(this.scheduled_messages).forEach(({ timeout }) =>
+      clearTimeout(timeout),
+    )
     Object.values(this.message_expiration_timeouts).forEach(clearTimeout)
 
     Object.values(this.locked_messages).forEach(({ timeout }) =>
