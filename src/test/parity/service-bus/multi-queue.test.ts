@@ -1,7 +1,7 @@
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
-  "can complete single message from queue",
+  "can receive concurrently from multiple queues without race conditions",
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 

@@ -252,6 +252,7 @@ const getAzureContextWithQueueFixtures = async (azure: AzureContext) => {
 export type TestContext = {
   azure: ReturnType<typeof getAzureContext>
   env: TestEnv
+  expectCorrelatedTime: (actual: Date, expected: Date) => void
   azure_rg: Awaited<ReturnType<AzureContext["rg"]>>
   azure_sb_namespace: Awaited<ReturnType<AzureContext["sb"]["namespace"]>>
   azure_store: IntegrationStore<typeof azure_routes>
@@ -260,6 +261,17 @@ export type TestContext = {
 }
 
 export const fixturedTest = test.extend<TestContext>({
+  expectCorrelatedTime: async ({ env, expect }, use) => {
+    use((actual, expected) => {
+      const time_window = env.TEST_AZURE_E2E === true ? 800 : 100
+      const delta = Math.abs(actual!.getTime() - expected.getTime())
+
+      expect(
+        delta,
+        `Expected remote times to be correlated: \n\t${actual}\n\t${expected}\n`,
+      ).toBeLessThan(time_window)
+    })
+  },
   env: async ({}, use) => {
     await use(getEnv())
   },

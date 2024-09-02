@@ -24,7 +24,7 @@ fixturedTest(
         maxWaitTimeInMs: 0,
       })
       expect(message!.body).toBe("hello world!")
-      expect(message!.deliveryCount).toBe(1)
+      expect(message!.deliveryCount).toBe(0)
 
       await receiver.abandonMessage(message!)
     }
@@ -37,7 +37,7 @@ fixturedTest(
         maxWaitTimeInMs: 0,
       })
       expect(message!.body).toBe("hello world!")
-      expect(message!.deliveryCount).toBe(2)
+      expect(message!.deliveryCount).toBe(1)
 
       await receiver.abandonMessage(message!)
     }

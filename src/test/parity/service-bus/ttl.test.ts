@@ -6,7 +6,7 @@ import { describe } from "vitest"
 describe("ttl", () => {
   fixturedTest(
     "message ttl is respected",
-    async ({ onTestFinished, azure_queue, expect }) => {
+    async ({ onTestFinished, azure_queue, expect, env }) => {
       const { sb_client, createQueue } = azure_queue
 
       const queue = await createQueue({})
@@ -14,7 +14,7 @@ describe("ttl", () => {
       const sender = sb_client.createSender(queue.name!)
       onTestFinished(() => sender.close())
 
-      const ttlMs = 200
+      const ttlMs = env.TEST_AZURE_E2E ? 5000 : 200
 
       await sender.sendMessages({
         body: "hello world!",
@@ -33,10 +33,10 @@ describe("ttl", () => {
 
   fixturedTest(
     "message default ttl is respected",
-    async ({ onTestFinished, azure_queue, expect }) => {
+    async ({ onTestFinished, azure_queue, expect, env }) => {
       const { sb_client, createQueue } = azure_queue
 
-      const ttlMs = 200
+      const ttlMs = env.TEST_AZURE_E2E ? 5000 : 200
 
       const queue = await createQueue({
         defaultMessageTimeToLive: Temporal.Duration.from({

@@ -1,7 +1,7 @@
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
-  "can complete single message from queue",
+  "receives message batch in proper order",
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 

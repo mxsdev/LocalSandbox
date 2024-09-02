@@ -39,13 +39,15 @@ fixturedTest(
 
 fixturedTest(
   "duplicate detection does not occur for messages outside of history window period",
-  async ({ onTestFinished, azure_queue, expect }) => {
+  { timeout: 40000 },
+  async ({ onTestFinished, azure_queue, expect, env }) => {
     const { sb_client, createQueue } = azure_queue
 
+    const duplicateDetectionMs = env.TEST_AZURE_E2E ? 20000 : 200
     const queue = await createQueue({
       requiresDuplicateDetection: true,
       duplicateDetectionHistoryTimeWindow: Temporal.Duration.from({
-        milliseconds: 1,
+        milliseconds: duplicateDetectionMs,
       }).toString(),
     })
 
@@ -57,7 +59,7 @@ fixturedTest(
       messageId: "1234",
     })
 
-    await delay(10)
+    await delay(duplicateDetectionMs * 1.5)
 
     await sender.sendMessages({
       body: "hello world!",

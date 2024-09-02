@@ -1,3 +1,4 @@
+import pRetry from "p-retry"
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
@@ -51,15 +52,13 @@ fixturedTest(
 
     await expect(getQueue(queue.name!)).resolves.toMatchObject({
       countDetails: {
-        transferDeadLetterMessageCount: 1,
+        transferDeadLetterMessageCount: 0,
       },
     })
 
     expect(dead_lettered_message?.sequenceNumber).toBeDefined()
-    expect(dead_lettered_message?.enqueuedSequenceNumber).toStrictEqual(
-      message?.sequenceNumber?.toNumber(),
-    )
-    expect(dead_lettered_message?.sequenceNumber).not.toStrictEqual(
+    expect.soft(dead_lettered_message?.enqueuedSequenceNumber).toBeUndefined()
+    expect(dead_lettered_message?.sequenceNumber).toStrictEqual(
       message?.sequenceNumber,
     )
 

@@ -3,7 +3,7 @@ import delay from "delay"
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
-  "Can schedule a message to a queue",
+  "can cancel a scheduled message from a queue",
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 
@@ -12,7 +12,7 @@ fixturedTest(
     const sender = sb_client.createSender(queue.name!)
     onTestFinished(() => sender.close())
 
-    const schedule_at = new Date(Date.now() + 200)
+    const schedule_at = new Date(Date.now() + 2500)
 
     const msg = await sender.scheduleMessages(
       {
@@ -20,8 +20,6 @@ fixturedTest(
       },
       schedule_at,
     )
-
-    await delay(ms("100ms"))
 
     await sender.cancelScheduledMessages(msg)
 
@@ -31,7 +29,7 @@ fixturedTest(
     expect(Date.now() < schedule_at.getTime()).toBe(true)
 
     const [message] = await receiver.receiveMessages(1, {
-      maxWaitTimeInMs: 300,
+      maxWaitTimeInMs: 0,
     })
     expect(message).toBeFalsy()
   },

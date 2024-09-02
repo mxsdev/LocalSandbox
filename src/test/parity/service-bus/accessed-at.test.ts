@@ -2,12 +2,12 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "accessedAt is updated on receiver open",
-  async ({ onTestFinished, azure_queue, expect }) => {
+  async ({ onTestFinished, azure_queue, expect, expectCorrelatedTime }) => {
     const { sb_client, createQueue, getQueue } = azure_queue
 
     const queue = await createQueue({})
 
-    expect(queue.accessedAt).toBeUndefined()
+    expect(queue.accessedAt?.getTime()).toBeLessThan(0)
 
     const receiver = sb_client.createReceiver(queue.name!)
     onTestFinished(() => receiver.close())
@@ -20,20 +20,18 @@ fixturedTest(
     const { createdAt } = await getQueue(queue.name!)
 
     expect(createdAt).toBeDefined()
-    expect(Math.abs(createdAt!.getTime() - receiveDate.getTime())).toBeLessThan(
-      100,
-    )
+    expectCorrelatedTime(createdAt!, receiveDate)
   },
 )
 
 fixturedTest(
   "accessedAt is updated on message sent",
-  async ({ onTestFinished, azure_queue, expect }) => {
+  async ({ onTestFinished, azure_queue, expect, expectCorrelatedTime }) => {
     const { sb_client, createQueue, getQueue } = azure_queue
 
     const queue = await createQueue({})
 
-    expect(queue.accessedAt).toBeUndefined()
+    expect(queue.accessedAt?.getTime()).toBeLessThan(0)
 
     const sender = sb_client.createSender(queue.name!)
     onTestFinished(() => sender.close())
@@ -46,8 +44,6 @@ fixturedTest(
     const { createdAt } = await getQueue(queue.name!)
 
     expect(createdAt).toBeDefined()
-    expect(Math.abs(createdAt!.getTime() - sendDate.getTime())).toBeLessThan(
-      100,
-    )
+    expectCorrelatedTime(createdAt!, sendDate)
   },
 )

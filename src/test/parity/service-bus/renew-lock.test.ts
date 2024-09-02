@@ -4,10 +4,16 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "can renew lock",
-  async ({ onTestFinished, azure_queue, expect }) => {
+  async ({
+    onTestFinished,
+    azure_queue,
+    expect,
+    expectCorrelatedTime,
+    env,
+  }) => {
     const { sb_client, createQueue } = azure_queue
 
-    const lockDurationMs = 500
+    const lockDurationMs = env.TEST_AZURE_E2E ? 5000 : 500
 
     const queue = await createQueue({
       lockDuration: Temporal.Duration.from({
@@ -42,9 +48,10 @@ fixturedTest(
       }
 
       const relocked_at_date = await receiver.renewMessageLock(message!)
-      expect(
-        Math.abs(relocked_at_date.getTime() - Date.now() - lockDurationMs),
-      ).toBeLessThanOrEqual(100)
+      expectCorrelatedTime(
+        relocked_at_date,
+        new Date(Date.now() + lockDurationMs),
+      )
       expect(message?.lockedUntilUtc).toStrictEqual(relocked_at_date)
 
       await delay(lockDurationMs)

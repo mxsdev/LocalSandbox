@@ -229,12 +229,22 @@ export class BrokerQueue<
         this.message_expiration_timeouts[message.message_id] = setTimeout(
           () => {
             delete this.message_expiration_timeouts[message.message_id]
-            // TODO: populate error & reason
-            this.tryDeadletterMessage({
-              ...message,
-              ttl: undefined,
-              absolute_expiry_time: undefined,
-            })
+
+            if (this.queue.properties.deadLetteringOnMessageExpiration) {
+              // TODO: populate error & reason
+              this.tryDeadletterMessage({
+                ...message,
+                ttl: undefined,
+                absolute_expiry_time: undefined,
+                application_properties: {
+                  ...message.application_properties,
+                  [BrokerConstants.deadLetterReason]:
+                    BrokerConstants.errors.messageExpired.reason,
+                  [BrokerConstants.deadLetterDescription]:
+                    BrokerConstants.errors.messageExpired.description,
+                },
+              })
+            }
           },
           Math.max(
             0,

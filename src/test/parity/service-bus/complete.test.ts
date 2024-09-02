@@ -2,9 +2,6 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "can complete single message from queue",
-  {
-    timeout: 20000,
-  },
   async ({ onTestFinished, azure_queue, expect }) => {
     const { sb_client, createQueue } = azure_queue
 
@@ -22,6 +19,7 @@ fixturedTest(
 
     const [message] = await receiver.receiveMessages(1)
     expect(message!.body).toBe("hello world!")
+    expect(message!.sequenceNumber!.toNumber()).toBe(1)
 
     await receiver.completeMessage(message!)
   },
