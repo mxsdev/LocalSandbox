@@ -3,8 +3,15 @@ import type {
   BrokerStore,
   QualifiedNamespaceId,
   QualifiedQueueId,
+  QualifiedQueueIdWithSubqueueType,
+  SubqueueType,
 } from "./broker.js"
-import { BrokerQueue, DeliveryTag, SenderName } from "./queue.js"
+import {
+  BrokerQueue,
+  BrokerQueueWithSubqueues,
+  DeliveryTag,
+  SenderName,
+} from "./queue.js"
 import { getPeerQueue, getQueueFromStoreOrThrow } from "./util.js"
 import { Logger } from "pino"
 import {
@@ -22,47 +29,54 @@ import {
 import { Temporal } from "@js-temporal/polyfill"
 
 export class BrokerConsumerBalancer {
-  private queues: Record<string, BrokerQueue<ParsedTypedRheaMessageWithId>> = {}
+  private _queues: Record<
+    string,
+    BrokerQueueWithSubqueues<ParsedTypedRheaMessageWithId>
+  > = {}
 
   constructor(
     private readonly store: BrokerStore,
     private readonly logger?: Logger,
   ) {}
 
-  queueMessageCount(queueId: QualifiedQueueId | string) {
-    return this.getOrCreate(this.getQueueFromStoreOrThrow(queueId).id)
-      .messageCount
+  queueMessageCount(queueId: QualifiedQueueIdWithSubqueueType) {
+    return this.getOrCreate(
+      this.getQueueFromStoreOrThrow(queueId).id,
+      queueId.subqueue,
+    ).messageCount
   }
 
-  queueMessageCountDetails(queueId: QualifiedQueueId | string) {
-    return this.getOrCreate(this.getQueueFromStoreOrThrow(queueId).id)
-      .messageCountDetails
+  queueMessageCountDetails(queueId: QualifiedQueueIdWithSubqueueType) {
+    return this.getOrCreate(
+      this.getQueueFromStoreOrThrow(queueId).id,
+      queueId.subqueue,
+    ).messageCountDetails
   }
 
   removeConsumers(where: (consumer: Sender) => boolean) {
-    Object.values(this.queues).forEach((q) => q.removeConsumers(where))
+    Object.values(this._queues).forEach((q) => q.removeConsumers(where))
   }
 
   renewLock(
-    queueId: QualifiedQueueId | string,
+    queueId: QualifiedQueueIdWithSubqueueType,
     ...args: Parameters<BrokerQueue<any>["renewLock"]>
   ) {
     const queue = this.getQueueFromStoreOrThrow(queueId)
-    const broker_queue = this.getOrCreate(queue.id)
+    const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
     return broker_queue.renewLock(...args)
   }
 
   updateConsumerDisposition(
-    queueId: QualifiedQueueId | string,
+    queueId: QualifiedQueueIdWithSubqueueType,
     ...args: Parameters<BrokerQueue<any>["updateConsumerDisposition"]>
   ) {
     const queue = this.getQueueFromStoreOrThrow(queueId)
-    const broker_queue = this.getOrCreate(queue.id)
+    const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
     broker_queue.updateConsumerDisposition(...args)
   }
 
   add(
-    qualifiedQueueId: QualifiedQueueId,
+    qualifiedQueueId: QualifiedQueueIdWithSubqueueType,
     sender: Sender,
     sender_name?: string,
   ) {
@@ -73,25 +87,27 @@ export class BrokerConsumerBalancer {
       this.logger,
     )
 
-    this.addSenderToQueue(sender, queue.id)
+    this.addSenderToQueue(sender, queue.id, qualifiedQueueId.subqueue)
   }
 
   peekMessageFromQueue(
-    queueId: QualifiedQueueId | string,
+    queueId: QualifiedQueueIdWithSubqueueType,
     messageCount: number,
   ) {
     // TODO: handle when queue is deleted more gracefully
     const queue = this.getQueueFromStoreOrThrow(queueId)
 
-    return this.getOrCreate(queue.id).peekMessages(messageCount)
+    return this.getOrCreate(queue.id, queueId.subqueue).peekMessages(
+      messageCount,
+    )
   }
 
   consumeDeferredMessages(
-    queueId: QualifiedQueueId | string,
+    queueId: QualifiedQueueIdWithSubqueueType,
     ...sequenceIds: Long[]
   ) {
     const queue = this.getQueueFromStoreOrThrow(queueId)
-    const broker_queue = this.getOrCreate(queue.id)
+    const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
 
     return sequenceIds
       .map((sequenceId) => broker_queue.consumeDeferredMessage(sequenceId))
@@ -99,7 +115,7 @@ export class BrokerConsumerBalancer {
   }
 
   sendMessagesToQueue(
-    queueId: QualifiedQueueId | string,
+    queueId: QualifiedQueueIdWithSubqueueType,
     ...message: ParsedTypedRheaMessageWithId[]
   ): BufferLikeEncodedLong[] {
     // TODO: handle when queue is deleted more gracefully
@@ -140,9 +156,10 @@ export class BrokerConsumerBalancer {
       return m
     })
 
-    const result_messages = this.getOrCreate(queue.id).scheduleMessages(
-      ...messages,
-    )
+    const result_messages = this.getOrCreate(
+      queue.id,
+      queueId.subqueue,
+    ).scheduleMessages(...messages)
 
     const sequence_numbers = result_messages.map(
       (m) => m.message_annotations[Constants.sequenceNumber],
@@ -154,11 +171,12 @@ export class BrokerConsumerBalancer {
   }
 
   cancelScheduledMessage(
-    queueId: QualifiedQueueId | string,
+    queueId: QualifiedQueueIdWithSubqueueType,
     sequence_number: Long,
   ) {
     return this.getOrCreate(
       this.getQueueFromStoreOrThrow(queueId).id,
+      queueId.subqueue,
     ).cancelScheduledMessage(sequence_number)
   }
 
@@ -167,35 +185,45 @@ export class BrokerConsumerBalancer {
     this.removeSenderFromAll(sender)
   }
 
-  private getOrCreate(queueId: string) {
-    if (this.queues[queueId]) {
-      return this.queues[queueId]
+  private getOrCreate(queueId: string, subqueue: SubqueueType | undefined) {
+    if (this._queues[queueId]) {
+      return this._queues[queueId].get(subqueue)
     } else {
-      const queue = new BrokerQueue(this.store, queueId, this.logger, this)
-      this.queues[queueId] = queue
-      return queue
+      const queue = new BrokerQueueWithSubqueues(
+        this.store,
+        queueId,
+        this.logger,
+        this,
+      )
+      this._queues[queueId] = queue
+      return queue.get(subqueue)
     }
   }
 
   private delete(queueId: string) {
-    // TODO
-    const queue = this.queues[queueId]
+    const queue = this._queues[queueId]
     if (!queue) return
 
     queue.close()
-    delete this.queues[queueId]
+    delete this._queues[queueId]
   }
 
-  private addSenderToQueue(sender: Sender, queueId: string) {
-    this.getOrCreate(queueId).addConsumer(sender)
+  private addSenderToQueue(
+    sender: Sender,
+    queueId: string,
+    subqueue: SubqueueType | undefined,
+  ) {
+    this.getOrCreate(queueId, subqueue).addConsumer(sender)
   }
 
   private removeSenderFromAll(sender: Sender) {
-    Object.values(this.queues).forEach((q) => q.removeConsumer(sender))
+    Object.values(this._queues).forEach((q) =>
+      q.removeConsumers((s) => s.name === sender.name),
+    )
   }
 
   close() {
-    Object.keys(this.queues).forEach(this.delete.bind(this))
+    Object.keys(this._queues).forEach(this.delete.bind(this))
   }
 
   private queue_cache: Record<string, string> = {}

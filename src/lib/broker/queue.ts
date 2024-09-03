@@ -4,7 +4,11 @@ import { Delivery, Message, Sender, SenderEvents } from "rhea"
 import { Deque } from "@datastructures-js/deque"
 import { Logger } from "pino"
 import { Constants } from "@azure/core-amqp"
-import { BrokerStore } from "./broker.js"
+import {
+  BrokerStore,
+  QualifiedQueueIdWithSubqueueType,
+  SubqueueType,
+} from "./broker.js"
 import {
   getQualifiedQueueIdFromStoreQueue,
   getQueueFromStoreOrThrow,
@@ -81,6 +85,16 @@ class DeliveryMap<T> {
   }
 }
 
+class SequenceNumberFactory {
+  private next_sequence_number = new Long(1)
+
+  allocateNextSequenceNumber() {
+    const sequence_number = this.next_sequence_number
+    this.next_sequence_number = this.next_sequence_number.add(1)
+    return sequence_number
+  }
+}
+
 interface QueueConsumer<M> {
   sender: Sender
   current_delivery: DeliveryMap<QueueConsumerDeliveryInfo<M>>
@@ -90,12 +104,12 @@ interface QueueConsumer<M> {
 
 type ScheduledMessage<M extends Message> = MessageWithSequenceNumber<M>
 
-export class BrokerQueue<
-  M extends Message & {
-    message_id: string
-    message_annotations?: Record<string, any>
-  },
-> {
+type TaggedMessage = Message & {
+  message_id: string
+  message_annotations?: Record<string, any>
+}
+
+export class BrokerQueue<M extends TaggedMessage> {
   private _messages = new Deque<{
     message: ScheduledMessage<M>
     scheduled_at: Date
@@ -119,15 +133,6 @@ export class BrokerQueue<
 
   private consumers: Record<string, QueueConsumer<ScheduledMessage<M>>> = {}
 
-  private next_sequence_number = new Long(1)
-
-  // TODO: check if sequence number is allocated per-queue or per-namespace
-  private allocateSequenceNumber() {
-    const sequence_number = this.next_sequence_number
-    this.next_sequence_number = this.next_sequence_number.add(1)
-    return sequence_number
-  }
-
   private num_messages_transferred_to_dlq: number = 0
 
   constructor(
@@ -135,6 +140,7 @@ export class BrokerQueue<
     public queue_id: string,
     private logger: Logger | undefined,
     private consumer_balancer: BrokerConsumerBalancer,
+    private sequence_number_factory = new SequenceNumberFactory(),
   ) {}
 
   private get queue() {
@@ -213,29 +219,34 @@ export class BrokerQueue<
 
     // TODO: should we throw here if there's no queue, or if queue is invalid?
     // TODO: should we throw here if the message has already been dead lettered?
-    if (queue.properties.forwardDeadLetteredMessagesTo) {
-      const dlq_id = {
-        ...queue_id,
-        queue_name: queue.properties.forwardDeadLetteredMessagesTo,
-      }
-
-      message.message_annotations[Constants.deadLetterSource] = queue.name!
-
-      message.message_annotations[Constants.deadLetterReason] = reason
-      message.message_annotations[Constants.deadLetterDescription] = description
-
-      this.consumer_balancer.sendMessagesToQueue(dlq_id, message)
-
-      // TODO: figure out when "transfers" occur
-      // this.num_messages_transferred_to_dlq++
+    const dlq_id: QualifiedQueueIdWithSubqueueType = {
+      ...queue_id,
+      queue_name: queue.properties.forwardDeadLetteredMessagesTo ?? queue.name!,
+      subqueue: queue.properties.forwardDeadLetteredMessagesTo
+        ? undefined
+        : "deadletter",
     }
+
+    if (!dlq_id.subqueue) {
+      message.message_annotations[Constants.deadLetterSource] = queue.name!
+    }
+
+    message.message_annotations[Constants.deadLetterReason] = reason
+    message.message_annotations[Constants.deadLetterDescription] = description
+
+    this.consumer_balancer.sendMessagesToQueue(dlq_id, message)
+
+    // TODO: figure out when "transfers" occur
+    // this.num_messages_transferred_to_dlq++
   }
 
   scheduleMessages(...sourceMessages: M[]) {
     const messages = sourceMessages.map((msg) => {
       msg.message_annotations ??= {}
       msg.message_annotations[Constants.sequenceNumber] ??=
-        unserializedLongToBufferLike.parse(this.allocateSequenceNumber())
+        unserializedLongToBufferLike.parse(
+          this.sequence_number_factory.allocateNextSequenceNumber(),
+        )
       return msg as typeof msg & {
         message_annotations: {
           [Constants.sequenceNumber]: z.output<
@@ -796,5 +807,50 @@ export class BrokerQueue<
 
       this.propagateAccess()
     }
+  }
+}
+
+export class BrokerQueueWithSubqueues<M extends TaggedMessage> {
+  constructor(
+    private store: BrokerStore,
+    public queue_id: string,
+    private logger: Logger | undefined,
+    private consumer_balancer: BrokerConsumerBalancer,
+  ) {}
+
+  private sequence_number_factory = new SequenceNumberFactory()
+
+  private queue = new BrokerQueue<M>(
+    this.store,
+    this.queue_id,
+    this.logger,
+    this.consumer_balancer,
+    this.sequence_number_factory,
+  )
+
+  private queue_deadletter = new BrokerQueue<M>(
+    this.store,
+    this.queue_id,
+    this.logger,
+    this.consumer_balancer,
+    this.sequence_number_factory,
+  )
+
+  get(subqueue_type?: SubqueueType) {
+    if (subqueue_type === "deadletter") {
+      return this.queue_deadletter
+    }
+
+    return this.queue
+  }
+
+  removeConsumers(...args: Parameters<BrokerQueue<M>["removeConsumers"]>) {
+    this.queue.removeConsumers(...args)
+    this.queue_deadletter.removeConsumers(...args)
+  }
+
+  close() {
+    this.queue_deadletter.close()
+    this.queue.close()
   }
 }

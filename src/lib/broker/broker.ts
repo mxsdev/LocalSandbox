@@ -43,22 +43,31 @@ export interface QualifiedNamespaceId {
   resource_group_name: string
 }
 
+export type SubqueueType = "deadletter"
+
 export interface QualifiedQueueId extends QualifiedNamespaceId {
   queue_name: string
+}
+
+export interface QualifiedQueueIdWithSubqueueType extends QualifiedQueueId {
+  subqueue: SubqueueType | undefined
 }
 
 export class AzureServiceBusBroker extends BrokerServer {
   private readonly connection_handshakes: Record<
     string,
-    Deque<QualifiedQueueId>
+    Deque<QualifiedQueueIdWithSubqueueType>
   > = {}
 
   private readonly link_queue = new WeakMap<
     Sender | Receiver,
-    QualifiedQueueId
+    QualifiedQueueIdWithSubqueueType
   >()
 
-  private completeHandshake(connection: Connection, queue: QualifiedQueueId) {
+  private completeHandshake(
+    connection: Connection,
+    queue: QualifiedQueueIdWithSubqueueType,
+  ) {
     this.connection_handshakes[connection.container_id] ??= new Deque()
     this.connection_handshakes[connection.container_id]!.pushFront(queue)
   }
@@ -98,7 +107,23 @@ export class AzureServiceBusBroker extends BrokerServer {
           correlation_id: message.message_id,
           body,
           application_properties: {
-            "status-code": 200,
+            [Constants.statusCode]: 200,
+          },
+        })
+
+      const respondFailure = (
+        consumer: Sender,
+        status: number,
+        statusDescription: string,
+        errorCondition?: string,
+      ) =>
+        consumer.send({
+          correlation_id: message.message_id,
+          body: {},
+          application_properties: {
+            [Constants.statusCode]: status,
+            [Constants.errorCondition]: errorCondition,
+            [Constants.statusDescription]: statusDescription,
           },
         })
 
@@ -136,6 +161,7 @@ export class AzureServiceBusBroker extends BrokerServer {
           resource_group_name,
           namespace_name,
           queue_name,
+          subqueue_name,
         ] = sb_connection_url.pathname.split("/")
 
         if (
@@ -151,7 +177,7 @@ export class AzureServiceBusBroker extends BrokerServer {
           throw new Error("Invalid sb connection string")
         }
 
-        const queue = {
+        const queueId = {
           resource_group_name,
           namespace_name,
           subscription_id,
@@ -159,9 +185,27 @@ export class AzureServiceBusBroker extends BrokerServer {
         }
 
         // ensure queue exists
-        getQueueFromStoreOrThrow(queue, this.store, this.logger)
+        const queue = getQueueFromStoreOrThrow(queueId, this.store, this.logger)
 
-        this.completeHandshake(connection, queue)
+        const subqueue: SubqueueType | undefined =
+          subqueue_name === BrokerConstants.deadLetterSubqueue
+            ? "deadletter"
+            : undefined
+
+        if (
+          subqueue === "deadletter" &&
+          queue.properties.forwardDeadLetteredMessagesTo != null
+        ) {
+          delivery.reject()
+          respondFailure(
+            consumer,
+            400,
+            "Cannot create a message receiver on an entity with auto-forwarding enabled.",
+          )
+          return
+        }
+
+        this.completeHandshake(connection, { ...queueId, subqueue })
 
         this.logger?.info(
           {
@@ -283,9 +327,14 @@ export class AzureServiceBusBroker extends BrokerServer {
               `Setting broker sequence number to ${sequenceNumber.toString()}`,
             )
 
-            this.consumer_balancer["getOrCreate"](
-              this.consumer_balancer["getQueueFromStoreOrThrow"](queue).id,
-            )["next_sequence_number"] = sequenceNumber
+            const queue_id =
+              this.consumer_balancer["getQueueFromStoreOrThrow"](queue).id
+
+            this.consumer_balancer["getOrCreate"](queue_id, undefined)
+
+            this.consumer_balancer["_queues"][queue_id]![
+              "sequence_number_factory"
+            ]["next_sequence_number"] = sequenceNumber
 
             delivery.accept()
             return
