@@ -12,6 +12,7 @@ import {
 import {
   getQualifiedQueueIdFromStoreQueue,
   getQueueFromStoreOrThrow,
+  getSubscriptionFromStoreOrThrow,
 } from "./util.js"
 import Long from "long"
 import {
@@ -110,7 +111,7 @@ type TaggedMessage = Message & {
   message_annotations?: Record<string, any>
 }
 
-type QueueModel = BrokerStore["sb_queue"]["_type"]
+type QueueModel = BrokerStore["sb_queue" | "sb_subscription"]["_type"]
 
 // TODO: include subscription model
 type QueueOrSubscription = QueueModel
@@ -284,7 +285,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
     const lockDurationMs = Temporal.Duration.from(
       this.queue.properties.lockDuration,
-    ).total({ unit: "millisecond" })
+    ).total("milliseconds")
 
     this.refreshIdleTimeout()
 
@@ -386,7 +387,10 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     const queue = this.queue
 
     for (const message of messages) {
-      if (queue.properties.requiresDuplicateDetection) {
+      if (
+        "requiresDuplicateDetection" in queue.properties &&
+        queue.properties.requiresDuplicateDetection
+      ) {
         const duplicateDetectionMs = Temporal.Duration.from(
           queue.properties.duplicateDetectionHistoryTimeWindow,
         ).total("milliseconds")
@@ -819,11 +823,15 @@ class InnerQueue<M extends TaggedMessage> extends MessageSequence<M> {
   }
 }
 
-// class InnerSubscription<M extends TaggedMessage> extends MessageSequence<M> {
-//   override get queue() {
-//     throw new Error("Unimplemented")
-//   }
-// }
+class InnerSubscription<M extends TaggedMessage> extends MessageSequence<M> {
+  override get queue() {
+    return getSubscriptionFromStoreOrThrow(
+      this.queue_id,
+      this.store,
+      this.logger,
+    )
+  }
+}
 
 abstract class BrokerMessageSequenceWithSubqueues<M extends TaggedMessage> {
   abstract createMessageSequence(): MessageSequence<M>
@@ -873,8 +881,18 @@ export class BrokerQueue<
   }
 }
 
-// export class BrokerSubscription<
-//   M extends TaggedMessage,
-// > extends BrokerMessageSequenceWithSubqueues<M> {}
+export class BrokerSubscription<
+  M extends TaggedMessage,
+> extends BrokerMessageSequenceWithSubqueues<M> {
+  override createMessageSequence(): MessageSequence<M> {
+    return new InnerSubscription(
+      this.store,
+      this.queue_id,
+      this.logger,
+      this.consumer_balancer,
+      this.sequence_number_factory,
+    )
+  }
+}
 
 export class BrokerTopic<M extends TaggedMessage> {}

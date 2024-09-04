@@ -47,15 +47,59 @@ export const getQueueFromStoreOrThrow = (
   return queue
 }
 
+export const getSubscriptionFromStoreOrThrow = (
+  queueId: QualifiedQueueId | string,
+  store: BrokerStore,
+  logger: Logger | undefined,
+) => {
+  const err = () => {
+    logger?.error(
+      { ...(typeof queueId === "object" ? queueId : { queueId }) },
+      "Could not find queue",
+    )
+
+    return new Error(`Queue not found: ${queue_name}`)
+  }
+
+  if (typeof queueId === "string") {
+    return store.sb_queue.getOrThrow(queueId, err)
+  }
+
+  const { namespace_name, queue_name, resource_group_name, subscription_id } =
+    queueId
+
+  const subscription = store.sb_subscription
+    .select()
+    .where((subscription) => subscription.name === queue_name)
+    .where(
+      (subscription) =>
+        subscription.sb_topic().sb_namespace().name === namespace_name,
+    )
+    .where(
+      (subscription) =>
+        subscription.sb_topic().sb_namespace().resource_group().name ===
+        resource_group_name,
+    )
+    .where(
+      (subscription) =>
+        subscription.sb_topic().sb_namespace().resource_group().subscription()
+          .subscriptionId === subscription_id,
+    )
+    .executeTakeFirstOrThrow(err)
+
+  return subscription
+}
+
 export const getQualifiedQueueIdFromStoreQueue = (
-  queue: BrokerStore["sb_queue"]["_type"],
+  queue: BrokerStore["sb_queue" | "sb_subscription"]["_type"],
 ): QualifiedQueueId => {
-  const namespace = queue.sb_namespace()
+  const namespace =
+    "sb_topic" in queue ? queue.sb_topic().sb_namespace() : queue.sb_namespace()
   const resource_group = namespace.resource_group()
   const subscription = resource_group.subscription()
 
   return {
-    namespace_name: queue.sb_namespace().name!,
+    namespace_name: namespace.name!,
     resource_group_name: resource_group.name!,
     subscription_id: subscription.subscriptionId,
     queue_name: queue.name!,

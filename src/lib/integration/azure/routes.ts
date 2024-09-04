@@ -247,7 +247,7 @@ export const azure_routes = createIntegration({
           ...v,
           id: v.id ?? randomUUID(),
         })),
-      hasOne: ["sb_namespace"],
+      hasOne: ["sb_topic"],
     },
     sb_queue: {
       primaryKey: "id",

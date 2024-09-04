@@ -2,7 +2,12 @@ import pMemoize from "p-memoize"
 import { test } from "vitest"
 import { testPort, testServiceBusPort } from "./setup.js"
 import { randomUUID } from "node:crypto"
-import { SBQueue, ServiceBusManagementClient } from "@azure/arm-servicebus"
+import {
+  SBQueue,
+  SBSubscription,
+  SBTopic,
+  ServiceBusManagementClient,
+} from "@azure/arm-servicebus"
 import { SubscriptionClient } from "@azure/arm-subscriptions"
 import type { ServiceClientOptions } from "@azure/core-client"
 import { LocalSandboxAzureCredential } from "../lib/service-client/local-sandbox-azure-credential.js"
@@ -227,10 +232,37 @@ const getAzureContextWithQueueFixtures = async (azure: AzureContext) => {
     await azure.sb.namespace()
   }
 
+  // TODO: handle clean-up in this function
   const createQueue = async (parameters: SBQueue) =>
     sb_management_client.queues.createOrUpdate(
       rg_name,
       namespace_name,
+      randomUUID(),
+      {
+        ...default_queue_params,
+        ...parameters,
+      },
+    )
+
+  const createTopic = async (parameters: SBTopic) =>
+    sb_management_client.topics.createOrUpdate(
+      rg_name,
+      namespace_name,
+      randomUUID(),
+      {
+        ...default_queue_params,
+        ...parameters,
+      },
+    )
+
+  const createSubscription = async (
+    topic_name: string,
+    parameters: SBSubscription,
+  ) =>
+    sb_management_client.subscriptions.createOrUpdate(
+      rg_name,
+      namespace_name,
+      topic_name,
       randomUUID(),
       {
         ...default_queue_params,
@@ -244,8 +276,12 @@ const getAzureContextWithQueueFixtures = async (azure: AzureContext) => {
   return {
     ...azure,
     sb_client: azure.sb.sb_client,
+
     createQueue,
     getQueue,
+
+    createTopic,
+    createSubscription,
   }
 }
 
