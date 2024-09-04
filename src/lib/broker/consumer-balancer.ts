@@ -8,8 +8,8 @@ import type {
 } from "./broker.js"
 import {
   BrokerQueue,
-  BrokerQueueWithSubqueues,
   DeliveryTag,
+  MessageSequence,
   SenderName,
 } from "./queue.js"
 import { getPeerQueue, getQueueFromStoreOrThrow } from "./util.js"
@@ -29,10 +29,8 @@ import {
 import { Temporal } from "@js-temporal/polyfill"
 
 export class BrokerConsumerBalancer {
-  private _queues: Record<
-    string,
-    BrokerQueueWithSubqueues<ParsedTypedRheaMessageWithId>
-  > = {}
+  private _queues: Record<string, BrokerQueue<ParsedTypedRheaMessageWithId>> =
+    {}
 
   constructor(
     private readonly store: BrokerStore,
@@ -59,7 +57,7 @@ export class BrokerConsumerBalancer {
 
   renewLock(
     queueId: QualifiedQueueIdWithSubqueueType,
-    ...args: Parameters<BrokerQueue<any>["renewLock"]>
+    ...args: Parameters<MessageSequence<any>["renewLock"]>
   ) {
     const queue = this.getQueueFromStoreOrThrow(queueId)
     const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
@@ -68,7 +66,7 @@ export class BrokerConsumerBalancer {
 
   updateConsumerDisposition(
     queueId: QualifiedQueueIdWithSubqueueType,
-    ...args: Parameters<BrokerQueue<any>["updateConsumerDisposition"]>
+    ...args: Parameters<MessageSequence<any>["updateConsumerDisposition"]>
   ) {
     const queue = this.getQueueFromStoreOrThrow(queueId)
     const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
@@ -189,12 +187,7 @@ export class BrokerConsumerBalancer {
     if (this._queues[queueId]) {
       return this._queues[queueId].get(subqueue)
     } else {
-      const queue = new BrokerQueueWithSubqueues(
-        this.store,
-        queueId,
-        this.logger,
-        this,
-      )
+      const queue = new BrokerQueue(this.store, queueId, this.logger, this)
       this._queues[queueId] = queue
       return queue.get(subqueue)
     }

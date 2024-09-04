@@ -24,6 +24,7 @@ import { uuidToString } from "../util/uuid.js"
 import { MessageCountDetails } from "@azure/arm-servicebus"
 import { BrokerConstants } from "./constants.js"
 import { z } from "zod"
+import { Constructor } from "type-fest"
 
 interface QueueConsumerDeliveryInfo<M> {
   delivery: Delivery
@@ -95,7 +96,7 @@ class SequenceNumberFactory {
   }
 }
 
-interface QueueConsumer<M> {
+interface MessageConsumer<M> {
   sender: Sender
   current_delivery: DeliveryMap<QueueConsumerDeliveryInfo<M>>
   listeners: Partial<Record<SenderEvents, (...args: any[]) => void>>
@@ -109,7 +110,12 @@ type TaggedMessage = Message & {
   message_annotations?: Record<string, any>
 }
 
-export class BrokerQueue<M extends TaggedMessage> {
+type QueueModel = BrokerStore["sb_queue"]["_type"]
+
+// TODO: include subscription model
+type QueueOrSubscription = QueueModel
+
+export abstract class MessageSequence<M extends TaggedMessage> {
   private _messages = new Deque<{
     message: ScheduledMessage<M>
     scheduled_at: Date
@@ -131,22 +137,19 @@ export class BrokerQueue<M extends TaggedMessage> {
 
   private message_expiration_timeouts: Record<string, NodeJS.Timeout> = {}
 
-  private consumers: Record<string, QueueConsumer<ScheduledMessage<M>>> = {}
+  private consumers: Record<string, MessageConsumer<ScheduledMessage<M>>> = {}
 
   private num_messages_transferred_to_dlq: number = 0
 
   constructor(
-    private store: BrokerStore,
+    protected store: BrokerStore,
     public queue_id: string,
-    private logger: Logger | undefined,
+    protected logger: Logger | undefined,
     private consumer_balancer: BrokerConsumerBalancer,
     private sequence_number_factory = new SequenceNumberFactory(),
   ) {}
 
-  private get queue() {
-    // TODO: handle deletes more gracefully..
-    return getQueueFromStoreOrThrow(this.queue_id, this.store, this.logger)
-  }
+  abstract get queue(): QueueOrSubscription
 
   private get fifo() {
     return false
@@ -198,12 +201,6 @@ export class BrokerQueue<M extends TaggedMessage> {
       .execute()
   }
 
-  consumeDeferredMessage(sequenceId: Long) {
-    const res = this.deferred_messages.get(sequenceId.toString())
-    this.deferred_messages.delete(sequenceId.toString())
-    return res
-  }
-
   private tryDeadletterMessage(
     message: ScheduledMessage<M>,
     reason?: string,
@@ -238,6 +235,134 @@ export class BrokerQueue<M extends TaggedMessage> {
 
     // TODO: figure out when "transfers" occur
     // this.num_messages_transferred_to_dlq++
+  }
+
+  private listNonExpiredMessages(args: { include_locked: boolean }) {
+    return [
+      ...this._messages.toArray().map(({ message }) => message),
+      ...(args.include_locked
+        ? [...this.locked_messages.values()].map(({ message }) => message)
+        : []),
+      ...[...this.deferred_messages.values()],
+      ...[...Object.values(this.scheduled_messages)].map(
+        ({ message }) => message,
+      ),
+    ].filter(
+      (m) =>
+        !m.absolute_expiry_time ||
+        new Date(m.absolute_expiry_time) > new Date(),
+    )
+  }
+
+  private scheduleMessagesInFront(...message: ScheduledMessage<M>[]) {
+    this.enqueueFront(...message)
+    this.tryFlush()
+  }
+
+  private finishDelivery(
+    consumer: (typeof this.consumers)[number],
+    delivery: Delivery,
+  ) {
+    consumer.current_delivery["finish"](delivery)
+
+    if (
+      consumer.current_delivery.length === 0 &&
+      consumer.schedule_for_deletion
+    ) {
+      this.logger?.debug(
+        { sender: consumer.sender.name },
+        "Deleting consumer since all deliveries are completed",
+      )
+      delete this.consumers[consumer.sender.name]
+    }
+
+    this.refreshIdleTimeout()
+  }
+
+  private tryFlush() {
+    let consumer: MessageConsumer<ScheduledMessage<M>> | undefined
+
+    const lockDurationMs = Temporal.Duration.from(
+      this.queue.properties.lockDuration,
+    ).total({ unit: "millisecond" })
+
+    this.refreshIdleTimeout()
+
+    while (
+      (consumer = Object.values(this.consumers).find(
+        (consumer) =>
+          consumer.sender.sendable() &&
+          consumer.sender.is_open() &&
+          consumer.sender.is_remote_open() &&
+          (!this.fifo || this.locked_messages.size === 0) &&
+          this._messages.size() > 0,
+      ))
+    ) {
+      const { message } = this.dequeue()!
+
+      // check expired
+      if (
+        message.absolute_expiry_time &&
+        new Date(message.absolute_expiry_time) <= new Date()
+      ) {
+        this.logger?.debug(
+          {
+            message_id: message.message_id,
+            ttl: message.ttl,
+            absolute_expiry_time: message.absolute_expiry_time,
+            queue: this.queue_id,
+          },
+          "Preventing message from sending due to expiration",
+        )
+        continue
+      }
+
+      const consumer_copy = consumer
+
+      // TODO: check queue lock mode?
+      this.locked_messages.set(message.message_id, {
+        message,
+        lock_duration_ms: lockDurationMs,
+        timeout: setTimeout(() => {
+          this.logger?.debug(
+            {
+              delivery_id: delivery.id,
+              consumer: consumer_copy.sender.name,
+              message_id: message.message_id,
+            },
+            "Unlocking message due to lock timeout!",
+          )
+
+          this.finishDelivery(consumer_copy, delivery)
+
+          this.locked_messages.delete(message.message_id)
+          // TODO: check docs to see where this should be redelivered (front, back?)
+          this.scheduleMessagesInFront(message)
+        }, lockDurationMs),
+      })
+
+      message.message_annotations[Constants.lockedUntil] =
+        +new Date().getTime() + lockDurationMs
+
+      // TODO: timeout
+      const delivery = consumer.sender.send(message)
+
+      message.delivery_count ??= 0
+      message.delivery_count += 1
+
+      this.logger?.debug(
+        {
+          delivery_id: delivery.id,
+          consumer: consumer.sender.name,
+          delivery_tag: Buffer.from(delivery.tag).length,
+        },
+        "Sent message",
+      )
+
+      consumer.current_delivery.store(delivery, { delivery, message })
+
+      this.propagateAccess()
+    }
   }
 
   scheduleMessages(...sourceMessages: M[]) {
@@ -353,21 +478,10 @@ export class BrokerQueue<M extends TaggedMessage> {
     return messages
   }
 
-  private listNonExpiredMessages(args: { include_locked: boolean }) {
-    return [
-      ...this._messages.toArray().map(({ message }) => message),
-      ...(args.include_locked
-        ? [...this.locked_messages.values()].map(({ message }) => message)
-        : []),
-      ...[...this.deferred_messages.values()],
-      ...[...Object.values(this.scheduled_messages)].map(
-        ({ message }) => message,
-      ),
-    ].filter(
-      (m) =>
-        !m.absolute_expiry_time ||
-        new Date(m.absolute_expiry_time) > new Date(),
-    )
+  consumeDeferredMessage(sequenceId: Long) {
+    const res = this.deferred_messages.get(sequenceId.toString())
+    this.deferred_messages.delete(sequenceId.toString())
+    return res
   }
 
   // TODO: which messages should/shouldn't be included in the count??
@@ -427,31 +541,6 @@ export class BrokerQueue<M extends TaggedMessage> {
 
     clearTimeout(existing_timeout.timeout)
     return true
-  }
-
-  private scheduleMessagesInFront(...message: ScheduledMessage<M>[]) {
-    this.enqueueFront(...message)
-    this.tryFlush()
-  }
-
-  finishDelivery(
-    consumer: (typeof this.consumers)[number],
-    delivery: Delivery,
-  ) {
-    consumer.current_delivery["finish"](delivery)
-
-    if (
-      consumer.current_delivery.length === 0 &&
-      consumer.schedule_for_deletion
-    ) {
-      this.logger?.debug(
-        { sender: consumer.sender.name },
-        "Deleting consumer since all deliveries are completed",
-      )
-      delete this.consumers[consumer.sender.name]
-    }
-
-    this.refreshIdleTimeout()
   }
 
   renewLock(sender: SenderName, delivery_tag: DeliveryTag) {
@@ -722,119 +811,34 @@ export class BrokerQueue<M extends TaggedMessage> {
       clearTimeout(timeout),
     )
   }
+}
 
-  private tryFlush() {
-    let consumer: QueueConsumer<ScheduledMessage<M>> | undefined
-
-    const lockDurationMs = Temporal.Duration.from(
-      this.queue.properties.lockDuration,
-    ).total({ unit: "millisecond" })
-
-    this.refreshIdleTimeout()
-
-    while (
-      (consumer = Object.values(this.consumers).find(
-        (consumer) =>
-          consumer.sender.sendable() &&
-          consumer.sender.is_open() &&
-          consumer.sender.is_remote_open() &&
-          (!this.fifo || this.locked_messages.size === 0) &&
-          this._messages.size() > 0,
-      ))
-    ) {
-      const { message } = this.dequeue()!
-
-      // check expired
-      if (
-        message.absolute_expiry_time &&
-        new Date(message.absolute_expiry_time) <= new Date()
-      ) {
-        this.logger?.debug(
-          {
-            message_id: message.message_id,
-            ttl: message.ttl,
-            absolute_expiry_time: message.absolute_expiry_time,
-            queue: this.queue_id,
-          },
-          "Preventing message from sending due to expiration",
-        )
-        continue
-      }
-
-      const consumer_copy = consumer
-
-      // TODO: check queue lock mode?
-      this.locked_messages.set(message.message_id, {
-        message,
-        lock_duration_ms: lockDurationMs,
-        timeout: setTimeout(() => {
-          this.logger?.debug(
-            {
-              delivery_id: delivery.id,
-              consumer: consumer_copy.sender.name,
-              message_id: message.message_id,
-            },
-            "Unlocking message due to lock timeout!",
-          )
-
-          this.finishDelivery(consumer_copy, delivery)
-
-          this.locked_messages.delete(message.message_id)
-          // TODO: check docs to see where this should be redelivered (front, back?)
-          this.scheduleMessagesInFront(message)
-        }, lockDurationMs),
-      })
-
-      message.message_annotations[Constants.lockedUntil] =
-        +new Date().getTime() + lockDurationMs
-
-      // TODO: timeout
-      const delivery = consumer.sender.send(message)
-
-      message.delivery_count ??= 0
-      message.delivery_count += 1
-
-      this.logger?.debug(
-        {
-          delivery_id: delivery.id,
-          consumer: consumer.sender.name,
-          delivery_tag: Buffer.from(delivery.tag).length,
-        },
-        "Sent message",
-      )
-
-      consumer.current_delivery.store(delivery, { delivery, message })
-
-      this.propagateAccess()
-    }
+class InnerQueue<M extends TaggedMessage> extends MessageSequence<M> {
+  override get queue() {
+    return getQueueFromStoreOrThrow(this.queue_id, this.store, this.logger)
   }
 }
 
-export class BrokerQueueWithSubqueues<M extends TaggedMessage> {
+// class InnerSubscription<M extends TaggedMessage> extends MessageSequence<M> {
+//   override get queue() {
+//     throw new Error("Unimplemented")
+//   }
+// }
+
+abstract class BrokerMessageSequenceWithSubqueues<M extends TaggedMessage> {
+  abstract createMessageSequence(): MessageSequence<M>
+
   constructor(
-    private store: BrokerStore,
+    protected store: BrokerStore,
     public queue_id: string,
-    private logger: Logger | undefined,
-    private consumer_balancer: BrokerConsumerBalancer,
+    protected logger: Logger | undefined,
+    protected consumer_balancer: BrokerConsumerBalancer,
   ) {}
 
-  private sequence_number_factory = new SequenceNumberFactory()
+  protected sequence_number_factory = new SequenceNumberFactory()
 
-  private queue = new BrokerQueue<M>(
-    this.store,
-    this.queue_id,
-    this.logger,
-    this.consumer_balancer,
-    this.sequence_number_factory,
-  )
-
-  private queue_deadletter = new BrokerQueue<M>(
-    this.store,
-    this.queue_id,
-    this.logger,
-    this.consumer_balancer,
-    this.sequence_number_factory,
-  )
+  private queue = this.createMessageSequence()
+  private queue_deadletter = this.createMessageSequence()
 
   get(subqueue_type?: SubqueueType) {
     if (subqueue_type === "deadletter") {
@@ -844,7 +848,7 @@ export class BrokerQueueWithSubqueues<M extends TaggedMessage> {
     return this.queue
   }
 
-  removeConsumers(...args: Parameters<BrokerQueue<M>["removeConsumers"]>) {
+  removeConsumers(...args: Parameters<MessageSequence<M>["removeConsumers"]>) {
     this.queue.removeConsumers(...args)
     this.queue_deadletter.removeConsumers(...args)
   }
@@ -854,3 +858,23 @@ export class BrokerQueueWithSubqueues<M extends TaggedMessage> {
     this.queue.close()
   }
 }
+
+export class BrokerQueue<
+  M extends TaggedMessage,
+> extends BrokerMessageSequenceWithSubqueues<M> {
+  override createMessageSequence(): MessageSequence<M> {
+    return new InnerQueue(
+      this.store,
+      this.queue_id,
+      this.logger,
+      this.consumer_balancer,
+      this.sequence_number_factory,
+    )
+  }
+}
+
+// export class BrokerSubscription<
+//   M extends TaggedMessage,
+// > extends BrokerMessageSequenceWithSubqueues<M> {}
+
+export class BrokerTopic<M extends TaggedMessage> {}
