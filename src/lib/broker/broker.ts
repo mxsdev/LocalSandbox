@@ -626,15 +626,15 @@ export class AzureServiceBusBroker extends BrokerServer {
   }
 
   queueMessageCount(
-    ...args: Parameters<BrokerConsumerBalancer["queueMessageCount"]>
+    ...args: Parameters<BrokerConsumerBalancer["messageCount"]>
   ) {
-    return this.consumer_balancer.queueMessageCount(...args)
+    return this.consumer_balancer.messageCount(...args)
   }
 
   queueMessageCountDetails(
-    ...args: Parameters<BrokerConsumerBalancer["queueMessageCountDetails"]>
+    ...args: Parameters<BrokerConsumerBalancer["messageCountDetails"]>
   ) {
-    return this.consumer_balancer.queueMessageCountDetails(...args)
+    return this.consumer_balancer.messageCountDetails(...args)
   }
 
   override async close(): Promise<void> {

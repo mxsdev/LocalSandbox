@@ -61,51 +61,56 @@ azure_routes.implementRoute(
   },
 )
 
-// azure_routes.implementRoute(
-//   ...extractRoute(
-//     queueRoutes,
-//     "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.ServiceBus/namespaces/[namespaceName]/queues/[queueName]",
-//     "GET",
-//   ),
-//   async (req, ctx) => {
-//     const namespace = ctx.store.sb_namespace
-//       .select()
-//       .where(
-//         (ns) =>
-//           ns.resource_group().subscription().subscriptionId ===
-//           ctx.subscription.subscriptionId,
-//       )
-//       .where(
-//         (ns) =>
-//           ns.resource_group().subscription().subscriptionId ===
-//           req.routeParams.subscriptionId,
-//       )
-//       .where(
-//         (ns) => ns.resource_group().name === req.routeParams.resourceGroupName,
-//       )
-//       .where((ns) => ns.name === req.routeParams.namespaceName)
-//       .executeTakeFirstOrThrow(() => new NotFoundError("Namespace not found"))
+azure_routes.implementRoute(
+  ...extractRoute(
+    subscriptionRoutes,
+    "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.ServiceBus/namespaces/[namespaceName]/topics/[topicName]/subscriptions/[subscriptionName]",
+    "GET",
+  ),
+  async (req, ctx) => {
+    const topic = ctx.store.sb_topic
+      .select()
+      .where(
+        (topic) =>
+          topic.sb_namespace().resource_group().subscription()
+            .subscriptionId === ctx.subscription.subscriptionId,
+      )
+      .where(
+        (topic) =>
+          topic.sb_namespace().resource_group().subscription()
+            .subscriptionId === req.routeParams.subscriptionId,
+      )
+      .where(
+        (topic) =>
+          topic.sb_namespace().resource_group().name ===
+          req.routeParams.resourceGroupName,
+      )
+      .where(
+        (topic) => topic.sb_namespace().name === req.routeParams.namespaceName,
+      )
+      .where((topic) => topic.name === req.routeParams.topicName)
+      .executeTakeFirstOrThrow(() => new NotFoundError("Topic not found"))
 
-//     const queue = ctx.store.sb_queue
-//       .select()
-//       .where((q) => q.sb_namespace().id === namespace.id)
-//       .where((q) => q.name === req.routeParams.queueName)
-//       .executeTakeFirstOrThrow(() => new NotFoundError("Queue not found"))
+    const subscription = ctx.store.sb_subscription
+      .select()
+      .where((q) => q.sb_topic().id === topic.id)
+      .where((q) => q.name === req.routeParams.subscriptionName)
+      .executeTakeFirstOrThrow(() => new NotFoundError("Queue not found"))
 
-//     const messageCount = ctx.azure_service_bus_broker?.queueMessageCount(
-//       queue.id,
-//     )
+    const messageCount = ctx.azure_service_bus_broker?.queueMessageCount(
+      subscription.id,
+    )
 
-//     const messageCountDetails =
-//       ctx.azure_service_bus_broker?.queueMessageCountDetails(queue.id)
+    const messageCountDetails =
+      ctx.azure_service_bus_broker?.queueMessageCountDetails(subscription.id)
 
-//     return ctx.json({
-//       ...queue,
-//       properties: {
-//         ...queue.properties,
-//         messageCount,
-//         countDetails: messageCountDetails,
-//       },
-//     })
-//   },
-// )
+    return ctx.json({
+      ...subscription,
+      properties: {
+        ...subscription.properties,
+        messageCount,
+        countDetails: messageCountDetails,
+      },
+    })
+  },
+)

@@ -301,9 +301,22 @@ const getAzureContextWithQueueFixtures = async (
   const getQueue = async (queue_name: string) =>
     sb_management_client.queues.get(rg_name, namespace_name, queue_name)
 
+  const getTopic = async (topic_name: string) =>
+    sb_management_client.topics.get(rg_name, namespace_name, topic_name)
+
+  const getSubscription = async (
+    topic_name: string,
+    subscription_name: string,
+  ) =>
+    sb_management_client.subscriptions.get(
+      rg_name,
+      namespace_name,
+      topic_name,
+      subscription_name,
+    )
+
   return {
     ...azure,
-    // sb_client: azure.sb.sb_client,
 
     createSender,
     createReceiver,
@@ -312,7 +325,10 @@ const getAzureContextWithQueueFixtures = async (
     getQueue,
 
     createTopic,
+    getTopic,
+
     createSubscription,
+    getSubscription,
   }
 }
 

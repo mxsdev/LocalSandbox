@@ -45,18 +45,19 @@ export class BrokerConsumerBalancer {
     private readonly logger?: Logger,
   ) {}
 
-  queueMessageCount(queueId: QualifiedQueueIdWithSubqueueType | string) {
+  messageCount(queueId: QualifiedMessageSourceId | string) {
+    const message_source = this.getMessageSourceFromStoreOrThrow(queueId)
+
     return (
-      this.getOrCreate(this.getQueueFromStoreOrThrow(queueId).id, undefined)
-        .messageCount +
-      this.getOrCreate(this.getQueueFromStoreOrThrow(queueId).id, "deadletter")
-        .messageCount
+      this.getOrCreateMessageSource(message_source, undefined).messageCount +
+      this.getOrCreateMessageSource(message_source, "deadletter").messageCount
     )
   }
 
-  queueMessageCountDetails(queueId: QualifiedQueueIdWithSubqueueType | string) {
-    return this.getOrCreate(
-      this.getQueueFromStoreOrThrow(queueId).id,
+  messageCountDetails(queueId: QualifiedMessageSourceId | string) {
+    return this.getOrCreateMessageSource(
+      this.getMessageSourceFromStoreOrThrow(queueId),
+
       // TODO: should DLQ stats be included in overall count??
       typeof queueId === "object" ? queueId.subqueue : undefined,
     ).messageCountDetails

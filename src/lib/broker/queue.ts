@@ -157,13 +157,14 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
   constructor(
     protected store: BrokerStore,
-    public queue_id: string,
+    public queue_or_subscription_id: string,
     protected logger: Logger | undefined,
     private consumer_balancer: BrokerConsumerBalancer,
     protected parent: BrokerMessageSequenceWithSubqueues<M>,
     private sequence_number_factory = new SequenceNumberFactory(),
   ) {}
 
+  abstract queue_type: "sb_queue" | "sb_subscription"
   abstract get queue(): QueueOrSubscription
 
   private get fifo() {
@@ -202,18 +203,43 @@ export abstract class MessageSequence<M extends TaggedMessage> {
    * sent
    */
   private propagateAccess() {
-    this.logger?.debug("Propagating access...")
+    this.logger?.debug(
+      {
+        queue_or_subscription_id: this.queue_or_subscription_id,
+        queue_type: this.queue_type,
+      },
+      "Propagating access...",
+    )
 
-    this.store.sb_queue
-      .update()
-      .where((q) => q.id === this.queue_id)
-      .set((v) => ({
-        properties: {
-          ...v.properties,
-          accessedAt: new Date().toISOString(),
-        },
-      }))
-      .execute()
+    switch (this.queue_type) {
+      case "sb_queue":
+        {
+          this.store.sb_queue
+            .update()
+            .where((q) => q.id === this.queue_or_subscription_id)
+            .set((v) => ({
+              properties: {
+                ...v.properties,
+                accessedAt: new Date().toISOString(),
+              },
+            }))
+            .executeTakeFirstOrThrow()
+        }
+        break
+
+      case "sb_subscription": {
+        this.store.sb_subscription
+          .update()
+          .where((q) => q.id === this.queue_or_subscription_id)
+          .set((v) => ({
+            properties: {
+              ...v.properties,
+              accessedAt: new Date().toISOString(),
+            },
+          }))
+          .executeTakeFirstOrThrow()
+      }
+    }
   }
 
   private tryDeadletterMessage(
@@ -320,6 +346,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     ).total("milliseconds")
 
     this.refreshIdleTimeout()
+    this.propagateAccess()
 
     while (
       (consumer = Object.values(this.consumers).find(
@@ -343,7 +370,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
             message_id: message.message_id,
             ttl: message.ttl,
             absolute_expiry_time: message.absolute_expiry_time,
-            queue: this.queue_id,
+            queue: this.queue_or_subscription_id,
           },
           "Preventing message from sending due to expiration",
         )
@@ -393,8 +420,6 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       )
 
       consumer.current_delivery.store(delivery, { delivery, message })
-
-      this.propagateAccess()
     }
   }
 
@@ -730,7 +755,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
   addConsumer(sender: Sender) {
     this.logger?.debug(
-      { sender: sender.name, queue_id: this.queue_id },
+      { sender: sender.name, queue_id: this.queue_or_subscription_id },
       "Registering sender",
     )
 
@@ -839,15 +864,23 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 }
 
 class InnerQueue<M extends TaggedMessage> extends MessageSequence<M> {
+  override queue_type = "sb_queue" as const
+
   override get queue() {
-    return getQueueFromStoreOrThrow(this.queue_id, this.store, this.logger)
+    return getQueueFromStoreOrThrow(
+      this.queue_or_subscription_id,
+      this.store,
+      this.logger,
+    )
   }
 }
 
 class InnerSubscription<M extends TaggedMessage> extends MessageSequence<M> {
+  override queue_type = "sb_subscription" as const
+
   override get queue() {
     return getSubscriptionFromStoreOrThrow(
-      this.queue_id,
+      this.queue_or_subscription_id,
       this.store,
       this.logger,
     )
@@ -999,7 +1032,29 @@ export class BrokerTopic<M extends TaggedMessage> {
     this.subscriptions.push(subscription)
   }
 
+  private propagateAccess() {
+    this.logger?.debug(
+      {
+        topic_id: this.topic_id,
+      },
+      "Propagating access...",
+    )
+
+    this.store.sb_topic
+      .update()
+      .where((q) => q.id === this.topic_id)
+      .set((v) => ({
+        properties: {
+          ...v.properties,
+          accessedAt: new Date().toISOString(),
+        },
+      }))
+      .executeTakeFirstOrThrow()
+  }
+
   scheduleMessages(...sourceMessages: M[]) {
+    this.propagateAccess()
+
     return this.subscriptions.flatMap((sub) =>
       sub
         .get(undefined)
@@ -1012,6 +1067,7 @@ export class BrokerTopic<M extends TaggedMessage> {
   }
 
   getSubscription(subscriptionId: string) {
+    this.propagateAccess()
     return this.subscriptions.find((s) => s.queue_id === subscriptionId)
   }
 

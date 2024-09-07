@@ -2,7 +2,7 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "accessedAt is updated on receiver open",
-  async ({ azure_queue, expect, expectCorrelatedTime }) => {
+  async ({ azure_queue, expect }) => {
     const { createReceiver, createQueue, getQueue } = azure_queue
 
     const queue = await createQueue({})
@@ -15,10 +15,12 @@ fixturedTest(
       maxWaitTimeInMs: 0,
     })
 
-    const { createdAt } = await getQueue(queue.name!)
+    const { accessedAt } = await getQueue(queue.name!)
 
-    expect(createdAt).toBeDefined()
-    expectCorrelatedTime(createdAt!, receiveDate)
+    expect(accessedAt).toBeDefined()
+
+    expect(accessedAt!.getTime()).toBeGreaterThan(receiveDate.getTime())
+    expect(accessedAt!.getTime()).toBeGreaterThan(queue.accessedAt!.getTime())
   },
 )
 
@@ -38,9 +40,11 @@ fixturedTest(
       body: "hello world!",
     })
 
-    const { createdAt } = await getQueue(queue.name!)
+    const { accessedAt } = await getQueue(queue.name!)
 
-    expect(createdAt).toBeDefined()
-    expectCorrelatedTime(createdAt!, sendDate)
+    expect(accessedAt).toBeDefined()
+
+    expect(accessedAt!.getTime()).toBeGreaterThan(sendDate.getTime())
+    expect(accessedAt!.getTime()).toBeGreaterThan(queue.accessedAt!.getTime())
   },
 )
