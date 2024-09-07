@@ -66,6 +66,7 @@ export type QualifiedQueueOrSubscriptionIdWithSubqueueType = (
 export type QualifiedMessageDestinationId = (
   | _QualifiedQueueId
   | _QualifiedTopicId
+  | QualifiedQueueOrTopicId
 ) & {
   subqueue: SubqueueType | undefined
 }

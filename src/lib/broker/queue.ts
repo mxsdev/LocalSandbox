@@ -160,6 +160,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     public queue_id: string,
     protected logger: Logger | undefined,
     private consumer_balancer: BrokerConsumerBalancer,
+    protected parent: BrokerMessageSequenceWithSubqueues<M>,
     private sequence_number_factory = new SequenceNumberFactory(),
   ) {}
 
@@ -222,30 +223,48 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   ) {
     const queue = this.queue
 
+    this.logger?.debug(
+      {
+        reason,
+        description,
+        message: message.message_id,
+        sequence_number: message.message_annotations[Constants.sequenceNumber],
+      },
+      "Deadlettering message",
+    )
+
     if (queue.properties.forwardDeadLetteredMessagesTo === queue.name) {
+      // TODO: parity test this error
       throw new Error("Cannot dead-letter to self")
     }
 
     const queue_id = getQualifiedIdFromModel(queue)
 
-    // TODO: should we throw here if there's no queue, or if queue is invalid?
-    // TODO: should we throw here if the message has already been dead lettered?
-    const dlq_id: QualifiedMessageDestinationId = {
-      ...queue_id,
-      queue_name: queue.properties.forwardDeadLetteredMessagesTo ?? queue.name!,
-      subqueue: queue.properties.forwardDeadLetteredMessagesTo
-        ? undefined
-        : "deadletter",
-    }
-
-    if (!dlq_id.subqueue) {
-      message.message_annotations[Constants.deadLetterSource] = queue.name!
-    }
-
     message.message_annotations[Constants.deadLetterReason] = reason
     message.message_annotations[Constants.deadLetterDescription] = description
 
-    this.consumer_balancer.sendMessagesToQueue(dlq_id, message)
+    if (queue.properties.forwardDeadLetteredMessagesTo) {
+      // send to destination
+      message.message_annotations[Constants.deadLetterSource] = queue.name!
+
+      // TODO: should we throw here if there's no queue, or if queue is invalid?
+      // TODO: should we throw here if the message has already been dead lettered?
+
+      const dlq_id: QualifiedMessageDestinationId = {
+        namespace_name: queue_id.namespace_name,
+        resource_group_name: queue_id.resource_group_name,
+        subscription_id: queue_id.subscription_id,
+        queue_or_topic_name: queue.properties.forwardDeadLetteredMessagesTo,
+        subqueue: undefined,
+      }
+
+      this.logger?.debug({ dlq_id }, "Forwarding deadlettered message")
+
+      this.consumer_balancer.sendMessagesToQueue(dlq_id, message)
+    } else {
+      this.logger?.debug("Forwarding deadlettered message to DLQ subqueue")
+      this.parent.get("deadletter").scheduleMessages(message)
+    }
 
     // TODO: figure out when "transfers" occur
     // this.num_messages_transferred_to_dlq++
@@ -878,6 +897,7 @@ export class BrokerQueue<
       this.queue_id,
       this.logger,
       this.consumer_balancer,
+      this,
       this.sequence_number_factory,
     )
   }
@@ -892,6 +912,7 @@ export class BrokerSubscription<
       this.queue_id,
       this.logger,
       this.consumer_balancer,
+      this,
       this.sequence_number_factory,
     )
   }

@@ -150,14 +150,6 @@ export class BrokerConsumerBalancer {
         msg.absolute_expiry_time = creation_time
       }
 
-      // m["message_annotations"] = {
-      //   ...m["message_annotations"],
-
-      //   [Constants.sequenceNumber]:
-      //     m["message_annotations"][Constants.sequenceNumber] ??
-      //     unserializedLongToBufferLike.parse(this.allocateSequenceNumber()),
-      // }
-
       m["delivery_count"] ??= 0
 
       return m
@@ -208,7 +200,7 @@ export class BrokerConsumerBalancer {
     }
   }
 
-  private getOrCreateMessageSource(
+  getOrCreateMessageSource(
     queue:
       | { id: string; _model: "sb_queue" }
       | { id: string; _model: "sb_subscription"; sb_topic_id: string },
