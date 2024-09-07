@@ -26,7 +26,7 @@ fixturedTest(
     expect(Date.now() < schedule_at.getTime()).toBe(true)
 
     const [message] = await receiver.receiveMessages(1, {
-      maxWaitTimeInMs: 0,
+      maxWaitTimeInMs: 1000,
     })
     expect(message).toBeFalsy()
   },
