@@ -122,11 +122,11 @@ export class BrokerConsumerBalancer {
   }
 
   consumeDeferredMessages(
-    queueId: QualifiedQueueIdWithSubqueueType,
+    queueId: QualifiedMessageSourceId,
     ...sequenceIds: Long[]
   ) {
-    const queue = this.getQueueFromStoreOrThrow(queueId)
-    const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
+    const queue = this.getMessageSourceFromStoreOrThrow(queueId)
+    const broker_queue = this.getOrCreateMessageSource(queue, queueId.subqueue)
 
     return sequenceIds
       .map((sequenceId) => broker_queue.consumeDeferredMessage(sequenceId))

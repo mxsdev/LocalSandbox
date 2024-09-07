@@ -25,6 +25,7 @@ import {
   getQueueOrTopicOrSubscriptionFromStoreOrThrow,
   isQualifiedTopicId,
   isQualifiedMessageSourceId,
+  isQualifiedMessageDestinationId,
 } from "./util.js"
 import { Constants } from "@azure/core-amqp"
 import { Deque } from "@datastructures-js/deque"
@@ -437,6 +438,11 @@ export class AzureServiceBusBroker extends BrokerServer {
 
             case Constants.operations.receiveBySequenceNumber:
               {
+                if (!isQualifiedMessageSourceId(queue)) {
+                  // TODO: test this
+                  throw new Error("Cannot send message to destination")
+                }
+
                 const {
                   [Constants.sequenceNumbers]: sequenceNumbers,
                   // TODO: figure this out
