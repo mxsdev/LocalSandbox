@@ -23,6 +23,8 @@ import {
   getQualifiedIdFromModel,
   getMessageDestinationFromStoreOrThrow,
   getQueueOrTopicOrSubscriptionFromStoreOrThrow,
+  isQualifiedTopicId,
+  isQualifiedMessageSourceId,
 } from "./util.js"
 import { Constants } from "@azure/core-amqp"
 import { Deque } from "@datastructures-js/deque"
@@ -412,6 +414,12 @@ export class AzureServiceBusBroker extends BrokerServer {
                   [Constants.messageCount]: messageCount,
                 } = parsed.data.body
 
+                if (!isQualifiedMessageSourceId(queue)) {
+                  respondSuccess(consumer, {
+                    messages: [],
+                  })
+                }
+
                 const peekedMessages =
                   this.consumer_balancer.peekMessageFromQueue(
                     queue,
@@ -573,8 +581,11 @@ export class AzureServiceBusBroker extends BrokerServer {
     if (!queue) {
       this.cbs_senders[sender.name] = sender
     } else {
-      if ("topic_name" in queue && !("subscription_name" in queue)) {
-        this.logger?.error({ queue }, "Tried to connect receiver to topic")
+      if (!isQualifiedMessageSourceId(queue)) {
+        this.logger?.error(
+          { queue },
+          "Tried to connect receiver to message destination",
+        )
         return
       }
 

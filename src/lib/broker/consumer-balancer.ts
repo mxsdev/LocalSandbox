@@ -98,13 +98,13 @@ export class BrokerConsumerBalancer {
   }
 
   peekMessageFromQueue(
-    queueId: QualifiedQueueIdWithSubqueueType,
+    queueId: QualifiedMessageSourceId,
     messageCount: number,
   ) {
     // TODO: handle when queue is deleted more gracefully
-    const queue = this.getQueueFromStoreOrThrow(queueId)
+    const queue = this.getMessageSourceFromStoreOrThrow(queueId)
 
-    return this.getOrCreate(queue.id, queueId.subqueue).peekMessages(
+    return this.getOrCreateMessageSource(queue, queueId.subqueue).peekMessages(
       messageCount,
     )
   }
@@ -247,11 +247,7 @@ export class BrokerConsumerBalancer {
     topicId: string,
     subqueue: SubqueueType | undefined,
   ) {
-    const topic = this._topics[topicId]
-    if (!topic) {
-      throw new Error(`Cannot find topic with id ${topicId}`)
-    }
-
+    const topic = this.getOrCreateTopic(topicId)
     const subscription = topic.getSubscription(subscriptionId)
 
     if (!subscription) {
@@ -294,12 +290,10 @@ export class BrokerConsumerBalancer {
     Object.keys(this._queues).forEach(this.delete.bind(this))
   }
 
-  private queue_cache: Record<string, string> = {}
-
   private getMessageDestinationFromStoreOrThrow(
     queueId: string | QualifiedMessageDestinationId,
   ) {
-    // TODO: use queue_cache
+    // TODO: cache this
     const message_destination = getMessageDestinationFromStoreOrThrow(
       queueId,
       this.store,
@@ -309,19 +303,16 @@ export class BrokerConsumerBalancer {
     return message_destination
   }
 
-  // private getQueueFromStoreOrThrow(queueId: string | QualifiedQueueId) {
-  //   const queue = getQueueFromStoreOrThrow(
-  //     typeof queueId === "string"
-  //       ? queueId
-  //       : (this.queue_cache[objectHash(queueId)] ?? queueId),
-  //     this.store,
-  //     this.logger,
-  //   )
+  private getMessageSourceFromStoreOrThrow(
+    queueId: string | QualifiedMessageSourceId,
+  ) {
+    // TODO: cache this
+    const message_source = getMessageSourceFromStoreOrThrow(
+      queueId,
+      this.store,
+      this.logger,
+    )
 
-  //   if (typeof queueId === "object") {
-  //     this.queue_cache[objectHash(queueId)] = queue.id
-  //   }
-
-  //   return queue
-  // }
+    return message_source
+  }
 }

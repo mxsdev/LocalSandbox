@@ -327,3 +327,32 @@ export function getQualifiedIdFromModel(
     }
   }
 }
+
+export const isQualifiedQueueId = <T extends object>(
+  val: T,
+): val is Extract<T, { queue_name: string }> => {
+  return "queue_name" in val
+}
+
+export const isQualifiedSubscriptionId = <T extends object>(
+  val: T,
+): val is Extract<T, { topic_name: string; subscription_name: string }> => {
+  return "topic_name" in val && "subscription_name" in val
+}
+
+export const isQualifiedTopicId = <T extends object>(
+  val: T,
+): val is Exclude<
+  Extract<T, { topic_name: string }>,
+  { subscription_name: never }
+> => {
+  return "topic_name" in val && !("subscription_name" in val)
+}
+
+export const isQualifiedMessageDestinationId = <T extends object>(val: T) => {
+  return isQualifiedQueueId(val) || isQualifiedTopicId(val)
+}
+
+export const isQualifiedMessageSourceId = <T extends object>(val: T) => {
+  return isQualifiedQueueId(val) || isQualifiedSubscriptionId(val)
+}

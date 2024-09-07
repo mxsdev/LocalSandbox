@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { BrokerConstants } from "./constants.js"
+import { Constants } from "@azure/core-amqp"
 
 const baseTuple = [
   z.string().max(0),
@@ -65,5 +66,20 @@ const brokerUrlSchema = z
   )
 
 export const parseBrokerURL = (url: URL) => {
-  return brokerUrlSchema.parse(url.pathname.split("/"))
+  const parts = url.pathname.split("/")
+
+  const end = z.enum([Constants.management]).safeParse(parts.at(-1))
+
+  if (end.success) {
+    parts.pop()
+  }
+
+  return {
+    ...brokerUrlSchema.parse(parts),
+    ...(end.success
+      ? {
+          internal: end.data,
+        }
+      : {}),
+  }
 }
