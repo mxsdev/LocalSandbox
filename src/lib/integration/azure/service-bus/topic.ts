@@ -86,13 +86,16 @@ azure_routes.implementRoute(
       .where((q) => q.name === req.routeParams.topicName)
       .executeTakeFirstOrThrow(() => new NotFoundError("Queue not found"))
 
-    // const messageCountDetails =
-    //   ctx.azure_service_bus_broker?.queueMessageCountDetails(queue.id)
+    const countDetails =
+      ctx.azure_service_bus_broker?.messageDestinationMessageCountDetails(
+        queue.id,
+      )
 
     return ctx.json({
       ...queue,
       properties: {
         ...queue.properties,
+        countDetails,
       },
     })
   },

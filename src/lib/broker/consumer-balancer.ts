@@ -45,7 +45,7 @@ export class BrokerConsumerBalancer {
     private readonly logger?: Logger,
   ) {}
 
-  messageCount(queueId: QualifiedMessageSourceId | string) {
+  messageSourceMessageCount(queueId: QualifiedMessageSourceId | string) {
     const message_source = this.getMessageSourceFromStoreOrThrow(queueId)
 
     return (
@@ -54,7 +54,15 @@ export class BrokerConsumerBalancer {
     )
   }
 
-  messageCountDetails(queueId: QualifiedMessageSourceId | string) {
+  messageDestinationMessageCountDetails(
+    queueId: QualifiedMessageDestinationId | string,
+  ) {
+    return this.getOrCreateMessageDestination(
+      this.getMessageDestinationFromStoreOrThrow(queueId),
+    ).messageCountDetails
+  }
+
+  messageSourceMessageCountDetails(queueId: QualifiedMessageSourceId | string) {
     return this.getOrCreateMessageSource(
       this.getMessageSourceFromStoreOrThrow(queueId),
 

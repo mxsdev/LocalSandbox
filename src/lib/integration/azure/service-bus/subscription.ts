@@ -97,12 +97,13 @@ azure_routes.implementRoute(
       .where((q) => q.name === req.routeParams.subscriptionName)
       .executeTakeFirstOrThrow(() => new NotFoundError("Queue not found"))
 
-    const messageCount = ctx.azure_service_bus_broker?.queueMessageCount(
-      subscription.id,
-    )
+    const messageCount =
+      ctx.azure_service_bus_broker?.messageSourceMessageCount(subscription.id)
 
     const messageCountDetails =
-      ctx.azure_service_bus_broker?.queueMessageCountDetails(subscription.id)
+      ctx.azure_service_bus_broker?.messageSourceMessageCountDetails(
+        subscription.id,
+      )
 
     return ctx.json({
       ...subscription,

@@ -2,7 +2,7 @@ import rhea from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
 import { Delivery, Message, Sender, SenderEvents } from "rhea"
 import { Deque } from "@datastructures-js/deque"
-import { Logger } from "pino"
+import { Logger, P } from "pino"
 import { Constants } from "@azure/core-amqp"
 import Long from "long"
 import {
@@ -1050,6 +1050,12 @@ export class BrokerTopic<M extends TaggedMessage> {
         },
       }))
       .executeTakeFirstOrThrow()
+  }
+
+  get messageCountDetails(): MessageCountDetails {
+    return {
+      activeMessageCount: 0,
+    }
   }
 
   scheduleMessages(...sourceMessages: M[]) {
