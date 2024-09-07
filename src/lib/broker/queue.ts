@@ -271,7 +271,16 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
     if (queue.properties.forwardDeadLetteredMessagesTo) {
       // send to destination
-      message.message_annotations[Constants.deadLetterSource] = queue.name!
+      message.message_annotations[Constants.deadLetterSource] =
+        queue._model === "sb_queue"
+          ? queue.name!
+          : `${queue.sb_topic().name!}/${BrokerConstants.subscriptionsSubqueue}/${queue.name!}`
+
+      if (queue._model === "sb_subscription") {
+        // TODO: better understand the circumstances when we need to update this value
+        message.message_annotations[Constants.enqueueSequenceNumber] =
+          message.message_annotations[Constants.sequenceNumber]
+      }
 
       // TODO: should we throw here if there's no queue, or if queue is invalid?
       // TODO: should we throw here if the message has already been dead lettered?

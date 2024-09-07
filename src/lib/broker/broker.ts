@@ -177,7 +177,7 @@ export class AzureServiceBusBroker extends BrokerServer {
           )
 
         if (
-          subqueue?.type === "subscription" &&
+          subqueue?.type === "deadletter" &&
           queue_or_topic_or_subscription.properties &&
           "forwardDeadLetteredMessagesTo" in
             queue_or_topic_or_subscription.properties &&
