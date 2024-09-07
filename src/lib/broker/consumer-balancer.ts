@@ -29,6 +29,9 @@ import {
 import {
   getMessageDestinationFromStoreOrThrow,
   getMessageSourceFromStoreOrThrow,
+  isQualifiedMessageDestinationId,
+  isQualifiedTopicId,
+  isQualifiedTopicOrQueueId,
 } from "./util.js"
 
 type Queue = BrokerQueue<ParsedTypedRheaMessageWithId>
@@ -180,13 +183,21 @@ export class BrokerConsumerBalancer {
   }
 
   cancelScheduledMessage(
-    queueId: QualifiedQueueIdWithSubqueueType,
+    queueId: QualifiedMessageSourceId | QualifiedMessageDestinationId,
     sequence_number: Long,
   ) {
-    return this.getOrCreate(
-      this.getQueueFromStoreOrThrow(queueId).id,
-      queueId.subqueue,
-    ).cancelScheduledMessage(sequence_number)
+    if (isQualifiedTopicId(queueId) || isQualifiedTopicOrQueueId(queueId)) {
+      const topic_or_queue = this.getOrCreateMessageDestination(
+        this.getMessageDestinationFromStoreOrThrow(queueId),
+      )
+
+      return topic_or_queue.cancelScheduledMessage(sequence_number)
+    } else {
+      return this.getOrCreateMessageSource(
+        this.getMessageSourceFromStoreOrThrow(queueId),
+        queueId.subqueue,
+      ).cancelScheduledMessage(sequence_number)
+    }
   }
 
   remove(sender: Sender) {

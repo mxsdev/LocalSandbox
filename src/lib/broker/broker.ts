@@ -391,7 +391,7 @@ export class AzureServiceBusBroker extends BrokerServer {
                 for (const sequenceNumber of sequenceNumbers) {
                   if (
                     !this.consumer_balancer.cancelScheduledMessage(
-                      queue,
+                      { ...queue, subqueue: undefined },
                       sequenceNumber,
                     )
                   ) {

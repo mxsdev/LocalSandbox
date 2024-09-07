@@ -349,6 +349,12 @@ export const isQualifiedTopicId = <T extends object>(
   return "topic_name" in val && !("subscription_name" in val)
 }
 
+export const isQualifiedTopicOrQueueId = <T extends object>(
+  val: T,
+): val is Extract<T, { queue_or_topic_name: string }> => {
+  return "queue_or_topic_name" in val
+}
+
 export const isQualifiedMessageDestinationId = <T extends object>(val: T) => {
   return isQualifiedQueueId(val) || isQualifiedTopicId(val)
 }

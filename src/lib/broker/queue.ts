@@ -1080,4 +1080,11 @@ export class BrokerTopic<M extends TaggedMessage> {
   onSubscriptionChange() {
     this.refreshSubscriptions()
   }
+
+  cancelScheduledMessage(sequence_number: Long): boolean {
+    return this.subscriptions.some((s) =>
+      // TODO: can i do this on a subqueue?
+      s.get(undefined).cancelScheduledMessage(sequence_number),
+    )
+  }
 }
