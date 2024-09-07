@@ -1,6 +1,6 @@
 import delay from "delay"
 import { fixturedTest } from "test/fixtured-test.js"
-import { BrokerConstants } from "../../../lib/broker/constants.js"
+import { BrokerConstants } from "../../../../lib/broker/constants.js"
 
 fixturedTest(
   "dead letter expired messages with deadLetteringOnMessageExpiration",

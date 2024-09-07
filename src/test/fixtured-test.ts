@@ -20,7 +20,6 @@ import {
 import { azure_routes } from "../lib/integration/azure/routes.js"
 import { getTestLogger } from "./get-test-logger.js"
 import { ServiceBusClient, ServiceBusClientOptions } from "@azure/service-bus"
-import { QualifiedNamespaceId } from "../lib/broker/broker.js"
 import { z } from "zod"
 import { DefaultAzureCredential } from "@azure/identity"
 import { Temporal } from "@js-temporal/polyfill"
@@ -181,7 +180,7 @@ const getAzureContext = (
     store,
 
     getSbClient: (
-      { subscription_id }: QualifiedNamespaceId,
+      { subscription_id }: { subscription_id: string },
       opts?: ServiceBusClientOptions,
     ) => {
       const sb_client = e2e_config?.TEST_AZURE_E2E
@@ -321,8 +320,16 @@ export const fixturedTest = test.extend<TestContext>({
   azure_sb_namespace: async ({ azure }, use) => {
     await use(await azure.sb.namespace())
   },
-  logger: async ({}, use) => {
-    await use(getTestLogger)
+  logger: async ({ onTestFinished }, use) => {
+    await use((...args) => {
+      const { logger, cleanup } = getTestLogger(...args)
+
+      onTestFinished(async () => {
+        await cleanup()
+      })
+
+      return logger
+    })
   },
   azure_store: async ({}, use) => {
     await use(createNewStore(azure_routes["store"]))

@@ -4,16 +4,6 @@ import { Delivery, Message, Sender, SenderEvents } from "rhea"
 import { Deque } from "@datastructures-js/deque"
 import { Logger } from "pino"
 import { Constants } from "@azure/core-amqp"
-import {
-  BrokerStore,
-  QualifiedQueueIdWithSubqueueType,
-  SubqueueType,
-} from "./broker.js"
-import {
-  getQualifiedQueueIdFromStoreQueue,
-  getQueueFromStoreOrThrow,
-  getSubscriptionFromStoreOrThrow,
-} from "./util.js"
 import Long from "long"
 import {
   BufferLikeEncodedLong,
@@ -25,15 +15,26 @@ import { uuidToString } from "../util/uuid.js"
 import { MessageCountDetails } from "@azure/arm-servicebus"
 import { BrokerConstants } from "./constants.js"
 import { z } from "zod"
-import { Constructor } from "type-fest"
+import {
+  BrokerStore,
+  DeliveryTag,
+  QualifiedMessageDestinationId,
+  QueueModel,
+  SenderName,
+  SubqueueType,
+  SubscriptionModel,
+} from "./types.js"
+import {
+  getQualifiedIdFromModel,
+  getQueueFromStoreOrThrow,
+  getSubscriptionFromStoreOrThrow,
+  getTopicFromStoreOrThrow,
+} from "./util.js"
 
 interface QueueConsumerDeliveryInfo<M> {
   delivery: Delivery
   message: M
 }
-
-export type DeliveryTag = Pick<Delivery, "tag"> & Partial<Pick<Delivery, "id">>
-export type SenderName = Pick<Sender, "name">
 
 type MessageWithProperties<Base extends Message, MessageAnnotations> = Base & {
   message_annotations: MessageAnnotations
@@ -90,10 +91,24 @@ class DeliveryMap<T> {
 class SequenceNumberFactory {
   private next_sequence_number = new Long(1)
 
-  allocateNextSequenceNumber() {
+  protected allocateNextSequenceNumber() {
     const sequence_number = this.next_sequence_number
     this.next_sequence_number = this.next_sequence_number.add(1)
     return sequence_number
+  }
+
+  bindToMessage<M extends Message>(msg: M) {
+    msg.message_annotations ??= {}
+    msg.message_annotations[Constants.sequenceNumber] ??=
+      unserializedLongToBufferLike.parse(this.allocateNextSequenceNumber())
+
+    return msg as typeof msg & {
+      message_annotations: {
+        [Constants.sequenceNumber]: z.output<
+          typeof unserializedLongToBufferLike
+        >
+      }
+    }
   }
 }
 
@@ -111,10 +126,8 @@ type TaggedMessage = Message & {
   message_annotations?: Record<string, any>
 }
 
-type QueueModel = BrokerStore["sb_queue" | "sb_subscription"]["_type"]
-
 // TODO: include subscription model
-type QueueOrSubscription = QueueModel
+type QueueOrSubscription = QueueModel | SubscriptionModel
 
 export abstract class MessageSequence<M extends TaggedMessage> {
   private _messages = new Deque<{
@@ -213,11 +226,11 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       throw new Error("Cannot dead-letter to self")
     }
 
-    const queue_id = getQualifiedQueueIdFromStoreQueue(queue)
+    const queue_id = getQualifiedIdFromModel(queue)
 
     // TODO: should we throw here if there's no queue, or if queue is invalid?
     // TODO: should we throw here if the message has already been dead lettered?
-    const dlq_id: QualifiedQueueIdWithSubqueueType = {
+    const dlq_id: QualifiedMessageDestinationId = {
       ...queue_id,
       queue_name: queue.properties.forwardDeadLetteredMessagesTo ?? queue.name!,
       subqueue: queue.properties.forwardDeadLetteredMessagesTo
@@ -367,20 +380,9 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   scheduleMessages(...sourceMessages: M[]) {
-    const messages = sourceMessages.map((msg) => {
-      msg.message_annotations ??= {}
-      msg.message_annotations[Constants.sequenceNumber] ??=
-        unserializedLongToBufferLike.parse(
-          this.sequence_number_factory.allocateNextSequenceNumber(),
-        )
-      return msg as typeof msg & {
-        message_annotations: {
-          [Constants.sequenceNumber]: z.output<
-            typeof unserializedLongToBufferLike
-          >
-        }
-      }
-    })
+    const messages = sourceMessages.map((msg) =>
+      this.sequence_number_factory.bindToMessage(msg),
+    )
 
     const messages_for_immediate_delivery: ScheduledMessage<M>[] = []
 
@@ -834,7 +836,7 @@ class InnerSubscription<M extends TaggedMessage> extends MessageSequence<M> {
 }
 
 abstract class BrokerMessageSequenceWithSubqueues<M extends TaggedMessage> {
-  abstract createMessageSequence(): MessageSequence<M>
+  protected abstract createMessageSequence(): MessageSequence<M>
 
   constructor(
     protected store: BrokerStore,
@@ -893,6 +895,106 @@ export class BrokerSubscription<
       this.sequence_number_factory,
     )
   }
+
+  private closeListeners: (() => void)[] = []
+
+  onClose(listener: () => void) {
+    this.closeListeners.push(listener)
+  }
+
+  // TODO: close subscription on deletion
+  override close(): void {
+    this.closeListeners.forEach((l) => l())
+    this.closeListeners = []
+
+    super.close()
+  }
 }
 
-export class BrokerTopic<M extends TaggedMessage> {}
+export class BrokerTopic<M extends TaggedMessage> {
+  private get topic() {
+    return getTopicFromStoreOrThrow(this.topic_id, this.store, this.logger)
+  }
+
+  private sequence_number_factory = new SequenceNumberFactory()
+
+  private subscription_trigger_fn: any
+
+  constructor(
+    protected store: BrokerStore,
+    public topic_id: string,
+    protected logger: Logger | undefined,
+    private consumer_balancer: BrokerConsumerBalancer,
+  ) {
+    this.subscription_trigger_fn = store.sb_subscription.registerTrigger({
+      change: (args) => {
+        if (!args.old_val || !args.new_val) {
+          this.refreshSubscriptions()
+        }
+      },
+    })
+
+    this.refreshSubscriptions()
+  }
+
+  private refreshSubscriptions() {
+    const subscriptions = this.topic.sb_subscriptions()
+
+    const registered_subscription_ids = new Set(
+      this.subscriptions.map((s) => s.queue_id),
+    )
+    const existing_subscription_ids = new Set(subscriptions.map((s) => s.id))
+
+    for (const subscription of subscriptions) {
+      if (!registered_subscription_ids.has(subscription.id)) {
+        this.registerSubscription(
+          new BrokerSubscription<M>(
+            this.store,
+            subscription.id,
+            this.logger,
+            this.consumer_balancer,
+          ),
+        )
+      }
+    }
+
+    for (const registered_subscription of [...this.subscriptions]) {
+      if (!existing_subscription_ids.has(registered_subscription.queue_id)) {
+        registered_subscription.close()
+      }
+    }
+  }
+
+  private subscriptions: BrokerSubscription<M>[] = []
+
+  private registerSubscription(subscription: BrokerSubscription<M>) {
+    subscription.onClose(
+      () =>
+        (this.subscriptions = this.subscriptions.filter(
+          (s) => s !== subscription,
+        )),
+    )
+
+    this.subscriptions.push(subscription)
+  }
+
+  scheduleMessages(...sourceMessages: M[]) {
+    return this.subscriptions.flatMap((sub) =>
+      sub
+        .get(undefined)
+        .scheduleMessages(...sourceMessages.map((m) => structuredClone(m))),
+    )
+  }
+
+  close() {
+    this.store.sb_subscription.unregisterTrigger(this.subscription_trigger_fn)
+  }
+
+  getSubscription(subscriptionId: string) {
+    return this.subscriptions.find((s) => s.queue_id === subscriptionId)
+  }
+
+  onSubscriptionChange() {
+    this.refreshSubscriptions()
+  }
+}

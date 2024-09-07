@@ -42,7 +42,7 @@ azure_routes.implementRoute(
         location: topic.location,
         // sb_namespace_id: namespace.id,
         sb_topic_id: topic.id,
-        name: req.routeParams.topicName,
+        name: req.routeParams.subscriptionName,
         properties: {
           ...parameters.properties,
           // TODO: automate this

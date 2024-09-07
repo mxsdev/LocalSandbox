@@ -3,8 +3,6 @@ import {
   parseBatchOrMessage,
   parseRheaMessage,
 } from "../amqp/parse-message.js"
-import type { azure_routes } from "../integration/azure/routes.js"
-import type { IntegrationStore } from "../integration/integration.js"
 import {
   BrokerConnectionEvent,
   BrokerMessageEvent,
@@ -21,7 +19,11 @@ import {
   Connection,
 } from "rhea"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
-import { getQueueFromStoreOrThrow } from "./util.js"
+import {
+  getQualifiedIdFromModel,
+  getMessageDestinationFromStoreOrThrow,
+  getQueueOrTopicOrSubscriptionFromStoreOrThrow,
+} from "./util.js"
 import { Constants } from "@azure/core-amqp"
 import { Deque } from "@datastructures-js/deque"
 import { z } from "zod"
@@ -34,39 +36,33 @@ import { BrokerConstants } from "./constants.js"
 import { unreorderLockToken } from "../util/service-bus.js"
 import { Middleware } from "edgespec"
 import { Logger } from "pino"
+import {
+  BrokerStore,
+  QualifiedMessageDestinationId,
+  QualifiedMessageSourceId,
+  QualifiedQueueOrTopicOrSubscriptionId,
+  SubqueueType,
+} from "./types.js"
+import { parseBrokerURL } from "./url.js"
 
-export type BrokerStore = IntegrationStore<typeof azure_routes>
-
-export interface QualifiedNamespaceId {
-  subscription_id: string
-  namespace_name: string
-  resource_group_name: string
-}
-
-export type SubqueueType = "deadletter"
-
-export interface QualifiedQueueId extends QualifiedNamespaceId {
-  queue_name: string
-}
-
-export interface QualifiedQueueIdWithSubqueueType extends QualifiedQueueId {
-  subqueue: SubqueueType | undefined
-}
+type ConnectionQueueLinkId =
+  | QualifiedMessageDestinationId
+  | QualifiedMessageSourceId
 
 export class AzureServiceBusBroker extends BrokerServer {
   private readonly connection_handshakes: Record<
     string,
-    Deque<QualifiedQueueIdWithSubqueueType>
+    Deque<ConnectionQueueLinkId>
   > = {}
 
   private readonly link_queue = new WeakMap<
     Sender | Receiver,
-    QualifiedQueueIdWithSubqueueType
+    ConnectionQueueLinkId
   >()
 
   private completeHandshake(
     connection: Connection,
-    queue: QualifiedQueueIdWithSubqueueType,
+    queue: ConnectionQueueLinkId,
   ) {
     this.connection_handshakes[connection.container_id] ??= new Deque()
     this.connection_handshakes[connection.container_id]!.pushFront(queue)
@@ -82,13 +78,6 @@ export class AzureServiceBusBroker extends BrokerServer {
   }
 
   private cbs_senders: Record<string, Sender> = {}
-
-  // TODO: cleanup
-  // private readonly queue_consumers: Record<string, Sender> = {}
-  private readonly consumer_balancer = new BrokerConsumerBalancer(
-    this.store,
-    this.logger,
-  )
 
   private session_id_map = new WeakMap<Session, string>()
 
@@ -155,46 +144,43 @@ export class AzureServiceBusBroker extends BrokerServer {
           throw new Error("Failed to parse sb connection string")
         }
 
-        const [
-          ,
-          subscription_id,
-          resource_group_name,
-          namespace_name,
-          queue_name,
-          subqueue_name,
-        ] = sb_connection_url.pathname.split("/")
+        this.logger?.debug(
+          {
+            sb_connection_string,
+          },
+          "Parsing connection string..",
+        )
 
-        if (
-          !subscription_id ||
-          !resource_group_name ||
-          !namespace_name ||
-          !queue_name
-        ) {
-          this.logger?.error(
-            { sb_connection_string },
-            "Invalid sb connection string",
-          )
-          throw new Error("Invalid sb connection string")
-        }
-
-        const queueId = {
-          resource_group_name,
+        const {
           namespace_name,
+          queue_or_topic_name,
+          resource_group_name,
           subscription_id,
-          queue_name,
-        }
+          subqueue,
+        } = parseBrokerURL(sb_connection_url)
 
         // ensure queue exists
-        const queue = getQueueFromStoreOrThrow(queueId, this.store, this.logger)
-
-        const subqueue: SubqueueType | undefined =
-          subqueue_name === BrokerConstants.deadLetterSubqueue
-            ? "deadletter"
-            : undefined
+        const queue_or_topic_or_subscription =
+          getQueueOrTopicOrSubscriptionFromStoreOrThrow(
+            {
+              resource_group_name,
+              namespace_name,
+              subscription_id,
+              queue_or_topic_name,
+              subscription_name:
+                subqueue?.type === "subscription" ? subqueue.name : undefined,
+            },
+            this.store,
+            this.logger,
+          )
 
         if (
-          subqueue === "deadletter" &&
-          queue.properties.forwardDeadLetteredMessagesTo != null
+          subqueue?.type === "subscription" &&
+          queue_or_topic_or_subscription.properties &&
+          "forwardDeadLetteredMessagesTo" in
+            queue_or_topic_or_subscription.properties &&
+          queue_or_topic_or_subscription.properties
+            .forwardDeadLetteredMessagesTo != null
         ) {
           delivery.reject()
           respondFailure(
@@ -205,13 +191,16 @@ export class AzureServiceBusBroker extends BrokerServer {
           return
         }
 
-        this.completeHandshake(connection, { ...queueId, subqueue })
+        const queueId = getQualifiedIdFromModel(queue_or_topic_or_subscription)
+
+        this.completeHandshake(connection, {
+          ...queueId,
+          subqueue: subqueue?.type === "deadletter" ? "deadletter" : undefined,
+        })
 
         this.logger?.info(
           {
-            resource_group_name,
-            namespace_name,
-            subscription_id,
+            queueId,
             sb_connection_string,
           },
           "Handshake initialized",
@@ -363,10 +352,9 @@ export class AzureServiceBusBroker extends BrokerServer {
           this.logger?.debug(
             {
               reply_to: message.reply_to,
-              queue_name: queue.queue_name,
+              queue,
               properties: message.application_properties,
               receiver: receiver.name,
-              // body: message.body,
             },
             `Performing operation ${parsed.data.operation}...`,
           )
@@ -534,7 +522,7 @@ export class AzureServiceBusBroker extends BrokerServer {
           this.logger?.debug(
             {
               receiver: receiver.name,
-              queue_name: queue.queue_name,
+              queue,
               num_messages: messages_to_enqueue.length,
             },
             "delivering message batch",
@@ -551,6 +539,8 @@ export class AzureServiceBusBroker extends BrokerServer {
         }
       }
     } catch (e: any) {
+      this.logger?.error({ err: e }, "Unexpected error on message")
+
       delivery.reject({ description: e.message })
     }
   }
@@ -580,10 +570,15 @@ export class AzureServiceBusBroker extends BrokerServer {
 
     const queue = this.consumeHandshake(sender.connection)
 
-    if (queue) {
-      this.consumer_balancer.add(queue, sender)
-    } else {
+    if (!queue) {
       this.cbs_senders[sender.name] = sender
+    } else {
+      if ("topic_name" in queue && !("subscription_name" in queue)) {
+        this.logger?.error({ queue }, "Tried to connect receiver to topic")
+        return
+      }
+
+      this.consumer_balancer.add(queue, sender)
     }
   }
 
@@ -642,6 +637,13 @@ export class AzureServiceBusBroker extends BrokerServer {
   ) {
     super(opts)
   }
+
+  // TODO: cleanup
+  // private readonly queue_consumers: Record<string, Sender> = {}
+  private readonly consumer_balancer = new BrokerConsumerBalancer(
+    this.store,
+    this.logger,
+  )
 
   get middleware() {
     return AzureServiceBusBroker.middleware(this)

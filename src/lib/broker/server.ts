@@ -16,6 +16,7 @@ export interface BrokerServerOpts {
   port?: number
   logger?: Logger
   tls?: boolean
+  cleanup?: () => Promise<void>
 }
 
 export interface BrokerMessageEvent {
@@ -158,6 +159,8 @@ export abstract class BrokerServer {
 
   async close() {
     this.logger?.info("Shutting down AMQP broker...")
+
+    await this.opts.cleanup?.()
 
     try {
       if (this.server) {

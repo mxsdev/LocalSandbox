@@ -1,5 +1,5 @@
 import { fixturedTest } from "test/fixtured-test.js"
-import { BrokerConstants } from "../../../lib/broker/constants.js"
+import { BrokerConstants } from "../../../../lib/broker/constants.js"
 
 fixturedTest(
   "expires messages after max delivery count and sends to DLQ",

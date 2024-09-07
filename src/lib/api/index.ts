@@ -9,21 +9,14 @@ import { Logger } from "pino"
 import { AzureServiceBusBroker } from "../broker/broker.js"
 import { azure_routes } from "../integration/azure/routes.js"
 import { withLogger } from "../logger/with-logger.js"
+import { getTestLogger } from "test/get-test-logger.js"
 
 const routeLoggingMiddleware: Middleware<{}, { logger: Logger }> = async (
   req,
   ctx,
   next,
 ) => {
-  const stream = new PassThrough()
-  const logger = getLogger({
-    stream,
-    app: "api",
-  })
-
-  stream.on("data", (chunk) => {
-    console.log((chunk.toString() as string).slice(0, -1))
-  })
+  const { logger, cleanup } = getTestLogger("api")
 
   logger.debug(
     { url: req.url, method: req.method, body: await req.clone().text() },
@@ -34,8 +27,7 @@ const routeLoggingMiddleware: Middleware<{}, { logger: Logger }> = async (
 
   const res = await next(req, ctx)
 
-  stream.destroy()
-  stream.removeAllListeners()
+  await cleanup()
 
   return res
 }
@@ -48,8 +40,11 @@ export const withRouteSpec = createWithEdgeSpec({
   ],
 })
 
+const amqp_logger = getTestLogger("amqp")
+
 export const azure_service_bus_broker = new AzureServiceBusBroker(
   azure_routes["store"],
+  { logger: amqp_logger.logger, cleanup: amqp_logger.cleanup },
 )
 const azure_integration = createAzureIntegration({
   broker: azure_service_bus_broker,

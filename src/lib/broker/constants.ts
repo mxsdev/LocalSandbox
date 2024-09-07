@@ -12,6 +12,7 @@ export const BrokerConstants = {
   deadLetterReason: "DeadLetterReason",
   deadLetterDescription: "DeadLetterErrorDescription",
   deadLetterSubqueue: "$DeadLetterQueue",
+  subscriptionsSubqueue: "Subscriptions",
   errors: {
     messageExpired: {
       reason: "TTLExpiredException",
