@@ -4,13 +4,12 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "can cancel a scheduled message from a queue",
-  async ({ onTestFinished, azure_queue, expect }) => {
-    const { sb_client, createQueue } = azure_queue
+  async ({ azure_queue, expect }) => {
+    const { createSender, createReceiver, createQueue } = azure_queue
 
     const queue = await createQueue({})
 
-    const sender = sb_client.createSender(queue.name!)
-    onTestFinished(() => sender.close())
+    const sender = createSender(queue.name!)
 
     const schedule_at = new Date(Date.now() + 2500)
 
@@ -22,9 +21,7 @@ fixturedTest(
     )
 
     await sender.cancelScheduledMessages(msg)
-
-    const receiver = sb_client.createReceiver(queue.name!)
-    onTestFinished(() => receiver.close())
+    const receiver = createReceiver(queue.name!)
 
     expect(Date.now() < schedule_at.getTime()).toBe(true)
 

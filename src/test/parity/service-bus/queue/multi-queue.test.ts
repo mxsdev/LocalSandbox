@@ -3,17 +3,15 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "can receive concurrently from multiple queues without race conditions",
-  async ({ onTestFinished, azure_queue, expect }) => {
-    const { sb_client, createQueue } = azure_queue
+  async ({ azure_queue, expect }) => {
+    const { createSender, createReceiver, createQueue } = azure_queue
 
     const queue = await createQueue({})
     const queue2 = await createQueue({})
 
-    const sender = sb_client.createSender(queue.name!)
-    onTestFinished(() => sender.close())
+    const sender = createSender(queue.name!)
 
-    const sender2 = sb_client.createSender(queue2.name!)
-    onTestFinished(() => sender.close())
+    const sender2 = createSender(queue2.name!)
 
     await Promise.all([
       sender.sendMessages({
@@ -25,8 +23,7 @@ fixturedTest(
     ])
 
     {
-      const receiver = sb_client.createReceiver(queue.name!)
-      onTestFinished(() => receiver.close())
+      const receiver = createReceiver(queue.name!)
 
       const [message] = await receiver.receiveMessages(1)
       expect(message!.body).toBe("hello world!")
@@ -36,8 +33,7 @@ fixturedTest(
     }
 
     {
-      const receiver = sb_client.createReceiver(queue2.name!)
-      onTestFinished(() => receiver.close())
+      const receiver = createReceiver(queue2.name!)
 
       const [message] = await receiver.receiveMessages(1)
       expect(message!.body).toBe("hello world2!")

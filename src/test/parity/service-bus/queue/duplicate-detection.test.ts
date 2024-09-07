@@ -4,15 +4,14 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "can deduplicate recent messages",
-  async ({ onTestFinished, azure_queue, expect }) => {
-    const { sb_client, createQueue } = azure_queue
+  async ({ azure_queue, expect }) => {
+    const { createSender, createReceiver, createQueue } = azure_queue
 
     const queue = await createQueue({
       requiresDuplicateDetection: true,
     })
 
-    const sender = sb_client.createSender(queue.name!)
-    onTestFinished(() => sender.close())
+    const sender = createSender(queue.name!)
 
     await sender.sendMessages({
       body: "hello world!",
@@ -24,8 +23,7 @@ fixturedTest(
       messageId: "1234",
     })
 
-    const receiver = sb_client.createReceiver(queue.name!, {})
-    onTestFinished(() => receiver.close())
+    const receiver = createReceiver(queue.name!, {})
 
     {
       const messages = await receiver.receiveMessages(2, {
@@ -40,8 +38,8 @@ fixturedTest(
 fixturedTest(
   "duplicate detection does not occur for messages outside of history window period",
   { timeout: 40000 },
-  async ({ onTestFinished, azure_queue, expect, env }) => {
-    const { sb_client, createQueue } = azure_queue
+  async ({ azure_queue, expect, env }) => {
+    const { createSender, createReceiver, createQueue } = azure_queue
 
     const duplicateDetectionMs = env.TEST_AZURE_E2E ? 20000 : 200
     const queue = await createQueue({
@@ -51,8 +49,7 @@ fixturedTest(
       }).toString(),
     })
 
-    const sender = sb_client.createSender(queue.name!)
-    onTestFinished(() => sender.close())
+    const sender = createSender(queue.name!)
 
     await sender.sendMessages({
       body: "hello world!",
@@ -66,8 +63,7 @@ fixturedTest(
       messageId: "1234",
     })
 
-    const receiver = sb_client.createReceiver(queue.name!, {})
-    onTestFinished(() => receiver.close())
+    const receiver = createReceiver(queue.name!, {})
 
     {
       const messages = await receiver.receiveMessages(2, {

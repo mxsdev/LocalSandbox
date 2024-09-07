@@ -6,13 +6,12 @@ import { describe } from "vitest"
 describe("ttl", () => {
   fixturedTest(
     "message ttl is respected",
-    async ({ onTestFinished, azure_queue, expect, env }) => {
-      const { sb_client, createQueue } = azure_queue
+    async ({ azure_queue, expect, env }) => {
+      const { createSender, createReceiver, createQueue } = azure_queue
 
       const queue = await createQueue({})
 
-      const sender = sb_client.createSender(queue.name!)
-      onTestFinished(() => sender.close())
+      const sender = createSender(queue.name!)
 
       const ttlMs = env.TEST_AZURE_E2E ? 5000 : 200
 
@@ -23,8 +22,7 @@ describe("ttl", () => {
 
       await delay(ttlMs)
 
-      const receiver = sb_client.createReceiver(queue.name!)
-      onTestFinished(() => receiver.close())
+      const receiver = createReceiver(queue.name!)
 
       const messages = await receiver.receiveMessages(1, { maxWaitTimeInMs: 0 })
       expect(messages).toHaveLength(0)
@@ -33,8 +31,8 @@ describe("ttl", () => {
 
   fixturedTest(
     "message default ttl is respected",
-    async ({ onTestFinished, azure_queue, expect, env }) => {
-      const { sb_client, createQueue } = azure_queue
+    async ({ azure_queue, expect, env }) => {
+      const { createSender, createReceiver, createQueue } = azure_queue
 
       const ttlMs = env.TEST_AZURE_E2E ? 5000 : 200
 
@@ -44,8 +42,7 @@ describe("ttl", () => {
         }).toString(),
       })
 
-      const sender = sb_client.createSender(queue.name!)
-      onTestFinished(() => sender.close())
+      const sender = createSender(queue.name!)
 
       await sender.sendMessages({
         body: "hello world!",
@@ -53,8 +50,7 @@ describe("ttl", () => {
 
       await delay(ttlMs)
 
-      const receiver = sb_client.createReceiver(queue.name!)
-      onTestFinished(() => receiver.close())
+      const receiver = createReceiver(queue.name!)
 
       const messages = await receiver.receiveMessages(1, { maxWaitTimeInMs: 0 })
       expect(messages).toHaveLength(0)

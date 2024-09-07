@@ -2,13 +2,12 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "receives message batch in proper order",
-  async ({ onTestFinished, azure_queue, expect }) => {
-    const { sb_client, createQueue } = azure_queue
+  async ({ azure_queue, expect }) => {
+    const { createSender, createReceiver, createQueue } = azure_queue
 
     const queue = await createQueue({})
 
-    const sender = sb_client.createSender(queue.name!)
-    onTestFinished(() => sender.close())
+    const sender = createSender(queue.name!)
 
     const batch = await sender.createMessageBatch({
       maxSizeInBytes: 1024,
@@ -22,8 +21,7 @@ fixturedTest(
 
     await sender.sendMessages(batch)
 
-    const receiver = sb_client.createReceiver(queue.name!)
-    onTestFinished(() => receiver.close())
+    const receiver = createReceiver(queue.name!)
 
     {
       const [message1, message2] = await receiver.receiveMessages(2)

@@ -3,8 +3,8 @@ import { BrokerConstants } from "../../../../lib/broker/constants.js"
 
 fixturedTest(
   "expires messages after max delivery count and sends to DLQ",
-  async ({ onTestFinished, azure_queue, expect }) => {
-    const { sb_client, createQueue } = azure_queue
+  async ({ azure_queue, expect }) => {
+    const { createSender, createReceiver, createQueue } = azure_queue
 
     const dlq = await createQueue({})
     const queue = await createQueue({
@@ -12,16 +12,14 @@ fixturedTest(
       forwardDeadLetteredMessagesTo: dlq.name!,
     })
 
-    const sender = sb_client.createSender(queue.name!)
-    onTestFinished(() => sender.close())
+    const sender = createSender(queue.name!)
 
     await sender.sendMessages({
       body: "hello world!",
     })
 
     {
-      const receiver = sb_client.createReceiver(queue.name!)
-      onTestFinished(() => receiver.close())
+      const receiver = createReceiver(queue.name!)
 
       const [message] = await receiver.receiveMessages(1, {
         maxWaitTimeInMs: 0,
@@ -33,8 +31,7 @@ fixturedTest(
     }
 
     {
-      const receiver = sb_client.createReceiver(queue.name!)
-      onTestFinished(() => receiver.close())
+      const receiver = createReceiver(queue.name!)
 
       const [message] = await receiver.receiveMessages(1, {
         maxWaitTimeInMs: 0,
@@ -46,8 +43,7 @@ fixturedTest(
     }
 
     {
-      const receiver = sb_client.createReceiver(dlq.name!)
-      onTestFinished(() => receiver.close())
+      const receiver = createReceiver(dlq.name!)
 
       const [message] = await receiver.receiveMessages(1)
       expect(message).toBeDefined()

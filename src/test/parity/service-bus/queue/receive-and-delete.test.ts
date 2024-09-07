@@ -1,37 +1,30 @@
 import { fixturedTest } from "test/fixtured-test.js"
 
-fixturedTest(
-  "receiveAndDelete mode",
-  async ({ onTestFinished, azure_queue, expect }) => {
-    const { sb_client, createQueue } = azure_queue
+fixturedTest("receiveAndDelete mode", async ({ azure_queue, expect }) => {
+  const { createSender, createReceiver, createQueue } = azure_queue
 
-    const queue = await createQueue({})
+  const queue = await createQueue({})
 
-    const sender = sb_client.createSender(queue.name!)
-    onTestFinished(() => sender.close())
+  const sender = createSender(queue.name!)
+  await sender.sendMessages({
+    body: "hello world!",
+  })
 
-    await sender.sendMessages({
-      body: "hello world!",
+  {
+    const receiver = createReceiver(queue.name!, {
+      receiveMode: "receiveAndDelete",
     })
 
-    {
-      const receiver = sb_client.createReceiver(queue.name!, {
-        receiveMode: "receiveAndDelete",
-      })
-      onTestFinished(() => receiver.close())
+    const [message] = await receiver.receiveMessages(1)
+    expect(message!.body).toBe("hello world!")
+  }
 
-      const [message] = await receiver.receiveMessages(1)
-      expect(message!.body).toBe("hello world!")
-    }
+  {
+    const receiver = createReceiver(queue.name!)
 
-    {
-      const receiver = sb_client.createReceiver(queue.name!)
-      onTestFinished(() => receiver.close())
-
-      const messages = await receiver.receiveMessages(1, {
-        maxWaitTimeInMs: 0,
-      })
-      expect(messages).toHaveLength(0)
-    }
-  },
-)
+    const messages = await receiver.receiveMessages(1, {
+      maxWaitTimeInMs: 0,
+    })
+    expect(messages).toHaveLength(0)
+  }
+})

@@ -4,8 +4,8 @@ import { BrokerConstants } from "../../../../lib/broker/constants.js"
 
 fixturedTest(
   "dead letter expired messages with deadLetteringOnMessageExpiration",
-  async ({ onTestFinished, azure_queue, expect }) => {
-    const { sb_client, createQueue, getQueue } = azure_queue
+  async ({ azure_queue, expect }) => {
+    const { createSender, createReceiver, createQueue, getQueue } = azure_queue
 
     const dlq = await createQueue({})
 
@@ -14,8 +14,7 @@ fixturedTest(
       forwardDeadLetteredMessagesTo: dlq.name!,
     })
 
-    const sender = sb_client.createSender(queue.name!)
-    onTestFinished(() => sender.close())
+    const sender = createSender(queue.name!)
 
     const ttlMs = 200
 
@@ -27,16 +26,14 @@ fixturedTest(
     await delay(ttlMs)
 
     {
-      const receiver = sb_client.createReceiver(queue.name!)
-      onTestFinished(() => receiver.close())
+      const receiver = createReceiver(queue.name!)
 
       const messages = await receiver.receiveMessages(1, { maxWaitTimeInMs: 0 })
       expect(messages).toHaveLength(0)
     }
 
     {
-      const receiver = sb_client.createReceiver(dlq.name!)
-      onTestFinished(() => receiver.close())
+      const receiver = createReceiver(dlq.name!)
 
       const [message] = await receiver.receiveMessages(1, {
         maxWaitTimeInMs: 5000,

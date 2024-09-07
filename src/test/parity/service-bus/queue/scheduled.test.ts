@@ -2,13 +2,12 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "Can schedule a message to a queue",
-  async ({ onTestFinished, azure_queue, expect, env }) => {
-    const { sb_client, createQueue, getQueue } = azure_queue
+  async ({ azure_queue, expect, env }) => {
+    const { createSender, createReceiver, createQueue, getQueue } = azure_queue
 
     const queue = await createQueue({})
 
-    const sender = sb_client.createSender(queue.name!)
-    onTestFinished(() => sender.close())
+    const sender = createSender(queue.name!)
 
     const scheduleMs = env.TEST_AZURE_E2E ? 5000 : 200
 
@@ -33,8 +32,7 @@ fixturedTest(
       },
     })
 
-    const receiver = sb_client.createReceiver(queue.name!)
-    onTestFinished(() => receiver.close())
+    const receiver = createReceiver(queue.name!)
 
     {
       const [message] = await receiver.peekMessages(1)

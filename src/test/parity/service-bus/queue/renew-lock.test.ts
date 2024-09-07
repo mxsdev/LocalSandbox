@@ -4,14 +4,8 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
   "can renew lock",
-  async ({
-    onTestFinished,
-    azure_queue,
-    expect,
-    expectCorrelatedTime,
-    env,
-  }) => {
-    const { sb_client, createQueue } = azure_queue
+  async ({ azure_queue, expect, expectCorrelatedTime, env }) => {
+    const { createSender, createReceiver, createQueue } = azure_queue
 
     const lockDurationMs = env.TEST_AZURE_E2E ? 5000 : 500
 
@@ -21,17 +15,15 @@ fixturedTest(
       }).toString(),
     })
 
-    const sender = sb_client.createSender(queue.name!)
-    onTestFinished(() => sender.close())
+    const sender = createSender(queue.name!)
 
     await sender.sendMessages({
       body: "hello world!",
     })
 
-    const receiver = sb_client.createReceiver(queue.name!, {
+    const receiver = createReceiver(queue.name!, {
       maxAutoLockRenewalDurationInMs: 0,
     })
-    onTestFinished(() => receiver.close())
 
     const [message] = await receiver.receiveMessages(1)
     expect(message!.body).toBe("hello world!")

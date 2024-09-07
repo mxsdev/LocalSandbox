@@ -3,15 +3,13 @@ import { fixturedTest } from "test/fixtured-test.js"
 fixturedTest(
   "cannot peek messages on a topic",
   async ({ onTestFinished, azure_queue, expect }) => {
-    const { sb_client, createTopic, createSubscription } = azure_queue
+    const { createSender, createReceiver, createTopic, createSubscription } =
+      azure_queue
 
     const topic = await createTopic({})
 
-    const sender = sb_client.createSender(topic.name!)
-    onTestFinished(() => sender.close())
-
-    const receiver = sb_client.createReceiver(topic.name!)
-    onTestFinished(() => receiver.close())
+    const sender = createSender(topic.name!)
+    const receiver = createReceiver(topic.name!)
 
     await sender.sendMessages({
       body: "hello world!",
@@ -24,20 +22,16 @@ fixturedTest(
 fixturedTest(
   "can peek message",
   async ({ onTestFinished, azure_queue, expect }) => {
-    const { sb_client, createTopic, createSubscription } = azure_queue
+    const { createSender, createReceiver, createTopic, createSubscription } =
+      azure_queue
 
     const topic = await createTopic({})
     const subscription1 = await createSubscription(topic.name!, {})
     const subscription2 = await createSubscription(topic.name!, {})
 
-    const sender = sb_client.createSender(topic.name!)
-    onTestFinished(() => sender.close())
-
-    const receiver1 = sb_client.createReceiver(topic.name!, subscription1.name!)
-    onTestFinished(() => receiver1.close())
-
-    const receiver2 = sb_client.createReceiver(topic.name!, subscription2.name!)
-    onTestFinished(() => receiver2.close())
+    const sender = createSender(topic.name!)
+    const receiver1 = createReceiver(topic.name!, subscription1.name!)
+    const receiver2 = createReceiver(topic.name!, subscription2.name!)
 
     {
       const [message] = await receiver1.peekMessages(1)
@@ -68,20 +62,16 @@ fixturedTest(
 fixturedTest(
   "can peek multiple messages",
   async ({ onTestFinished, azure_queue, expect }) => {
-    const { sb_client, createTopic, createSubscription } = azure_queue
+    const { createSender, createReceiver, createTopic, createSubscription } =
+      azure_queue
 
     const topic = await createTopic({})
     const subscription1 = await createSubscription(topic.name!, {})
     const subscription2 = await createSubscription(topic.name!, {})
 
-    const sender = sb_client.createSender(topic.name!)
-    onTestFinished(() => sender.close())
-
-    const receiver1 = sb_client.createReceiver(topic.name!, subscription1.name!)
-    onTestFinished(() => receiver1.close())
-
-    const receiver2 = sb_client.createReceiver(topic.name!, subscription2.name!)
-    onTestFinished(() => receiver2.close())
+    const sender = createSender(topic.name!)
+    const receiver1 = createReceiver(topic.name!, subscription1.name!)
+    const receiver2 = createReceiver(topic.name!, subscription2.name!)
 
     {
       const [message] = await receiver1.peekMessages(2)

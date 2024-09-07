@@ -19,7 +19,11 @@ import {
 } from "../lib/integration/integration.js"
 import { azure_routes } from "../lib/integration/azure/routes.js"
 import { getTestLogger } from "./get-test-logger.js"
-import { ServiceBusClient, ServiceBusClientOptions } from "@azure/service-bus"
+import {
+  ServiceBusClient,
+  ServiceBusClientOptions,
+  ServiceBusReceiverOptions,
+} from "@azure/service-bus"
 import { z } from "zod"
 import { DefaultAzureCredential } from "@azure/identity"
 import { Temporal } from "@js-temporal/polyfill"
@@ -217,10 +221,13 @@ const getAzureContext = (
 
 type AzureContext = ReturnType<typeof getAzureContext>
 
-const getAzureContextWithQueueFixtures = async (azure: AzureContext) => {
+const getAzureContextWithQueueFixtures = async (
+  azure: AzureContext,
+  onTestFinished: (cb: () => Promise<void>) => void,
+) => {
   const {
     sb_management_client,
-    sb: { default_queue_params, namespace_name },
+    sb: { default_queue_params, namespace_name, sb_client },
     rg_name,
     e2e_config,
   } = azure
@@ -229,6 +236,28 @@ const getAzureContextWithQueueFixtures = async (azure: AzureContext) => {
     // ensure resource group, namespace are created
     await azure.rg()
     await azure.sb.namespace()
+  }
+
+  const createSender = (
+    ...args: Parameters<(typeof sb_client)["createSender"]>
+  ) => {
+    const sender = sb_client.createSender(...args)
+    onTestFinished(() => sender.close())
+    return sender
+  }
+
+  const createReceiver = (
+    ...args:
+      | [queueName: string, options?: ServiceBusReceiverOptions]
+      | [
+          topicName: string,
+          subscriptionName: string,
+          options?: ServiceBusReceiverOptions,
+        ]
+  ) => {
+    const receiver = sb_client.createReceiver(...(args as [any]))
+    onTestFinished(() => receiver.close())
+    return receiver
   }
 
   // TODO: handle clean-up in this function
@@ -274,7 +303,10 @@ const getAzureContextWithQueueFixtures = async (azure: AzureContext) => {
 
   return {
     ...azure,
-    sb_client: azure.sb.sb_client,
+    // sb_client: azure.sb.sb_client,
+
+    createSender,
+    createReceiver,
 
     createQueue,
     getQueue,
@@ -334,7 +366,7 @@ export const fixturedTest = test.extend<TestContext>({
   azure_store: async ({}, use) => {
     await use(createNewStore(azure_routes["store"]))
   },
-  azure_queue: async ({ azure }, use) => {
-    await use(await getAzureContextWithQueueFixtures(azure))
+  azure_queue: async ({ azure, onTestFinished }, use) => {
+    await use(await getAzureContextWithQueueFixtures(azure, onTestFinished))
   },
 })
