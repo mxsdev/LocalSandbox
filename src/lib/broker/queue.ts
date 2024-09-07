@@ -280,6 +280,8 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         // TODO: better understand the circumstances when we need to update this value
         message.message_annotations[Constants.enqueueSequenceNumber] =
           message.message_annotations[Constants.sequenceNumber]
+        // @ts-expect-error This property is not needed for sendMessagesToQueue below
+        delete message.message_annotations[Constants.sequenceNumber]
       }
 
       // TODO: should we throw here if there's no queue, or if queue is invalid?
@@ -1064,6 +1066,7 @@ export class BrokerTopic<M extends TaggedMessage> {
   get messageCountDetails(): MessageCountDetails {
     return {
       activeMessageCount: 0,
+      transferDeadLetterMessageCount: 0,
     }
   }
 

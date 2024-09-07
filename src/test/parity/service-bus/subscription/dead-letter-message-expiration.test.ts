@@ -11,7 +11,9 @@ fixturedTest(
       createQueue,
       createTopic,
       createSubscription,
+      getTopic,
       getSubscription,
+      getQueue,
     } = azure_queue
 
     const dlq = await createQueue({})
@@ -64,6 +66,17 @@ fixturedTest(
           transferDeadLetterMessageCount: 0,
         },
       })
+      await expect(getTopic(topic.name!)).resolves.toMatchObject({
+        countDetails: {
+          transferDeadLetterMessageCount: 0,
+        },
+      })
+      await expect(getQueue(dlq.name!)).resolves.toMatchObject({
+        countDetails: {
+          transferDeadLetterMessageCount: 0,
+        },
+      })
+
       expect(message?.sequenceNumber?.toNumber()).toStrictEqual(1)
       expect(message?.enqueuedSequenceNumber).toStrictEqual(1)
     }
