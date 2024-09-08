@@ -20,6 +20,7 @@ import {
 } from "../util/long.js"
 import { Temporal } from "@js-temporal/polyfill"
 import {
+  _QualifiedQueueId,
   BrokerStore,
   QualifiedMessageDestinationId,
   QualifiedMessageSourceId,
@@ -29,6 +30,7 @@ import {
 import {
   getMessageDestinationFromStoreOrThrow,
   getMessageSourceFromStoreOrThrow,
+  getQueueFromStoreOrThrow,
   isQualifiedMessageDestinationId,
   isQualifiedTopicId,
   isQualifiedTopicOrQueueId,
@@ -195,6 +197,13 @@ export class BrokerConsumerBalancer {
     this.removeSenderFromAll(sender)
   }
 
+  setSequenceNumber(queue: _QualifiedQueueId, sequence_number: Long) {
+    // TODO: introduce public method for this purpose
+    this.getOrCreateQueue(this.getQueueFromStoreOrThrow(queue).id, undefined)[
+      "parent"
+    ]["sequence_number_factory"]["next_sequence_number"] = sequence_number
+  }
+
   private getOrCreateMessageDestination(
     queue: { id: string; _model: "sb_queue" | "sb_topic" },
     // subqueue: SubqueueType | undefined,
@@ -316,5 +325,9 @@ export class BrokerConsumerBalancer {
     )
 
     return message_source
+  }
+
+  private getQueueFromStoreOrThrow(queueId: string | _QualifiedQueueId) {
+    return getQueueFromStoreOrThrow(queueId, this.store, this.logger)
   }
 }

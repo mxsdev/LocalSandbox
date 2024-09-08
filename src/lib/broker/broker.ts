@@ -326,14 +326,7 @@ export class AzureServiceBusBroker extends BrokerServer {
               `Setting broker sequence number to ${sequenceNumber.toString()}`,
             )
 
-            const queue_id =
-              this.consumer_balancer["getQueueFromStoreOrThrow"](queue).id
-
-            this.consumer_balancer["getOrCreate"](queue_id, undefined)
-
-            this.consumer_balancer["_queues"][queue_id]![
-              "sequence_number_factory"
-            ]["next_sequence_number"] = sequenceNumber
+            this.consumer_balancer.setSequenceNumber(queue, sequenceNumber)
 
             delivery.accept()
             return
