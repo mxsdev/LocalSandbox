@@ -88,11 +88,11 @@ export class BrokerConsumerBalancer {
   }
 
   updateConsumerDisposition(
-    queueId: QualifiedQueueIdWithSubqueueType,
+    queueId: QualifiedMessageSourceId,
     ...args: Parameters<MessageSequence<any>["updateConsumerDisposition"]>
   ) {
-    const queue = this.getQueueFromStoreOrThrow(queueId)
-    const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
+    const queue = this.getMessageSourceFromStoreOrThrow(queueId)
+    const broker_queue = this.getOrCreateMessageSource(queue, queueId.subqueue)
     broker_queue.updateConsumerDisposition(...args)
   }
 
