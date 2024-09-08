@@ -32,6 +32,7 @@ import {
   isQualifiedMessageDestinationId,
   isQualifiedTopicId,
   isQualifiedTopicOrQueueId,
+  populateMessageWithDefaultExpiryTime,
 } from "./util.js"
 
 type Queue = BrokerQueue<ParsedTypedRheaMessageWithId>
@@ -144,22 +145,11 @@ export class BrokerConsumerBalancer {
       // const sequence_number = this.allocateSequenceNumber()
       const msg = m as Message
 
-      if (
-        !msg.absolute_expiry_time &&
-        queue.properties.defaultMessageTimeToLive
-      ) {
-        // TODO: check if changing the default TTL affects in-flight messages,
-        // or just newly scheduled ones
-        const creation_time = new Date(
-          (msg.creation_time
-            ? new Date(msg.creation_time).getTime()
-            : Date.now()) +
-            Temporal.Duration.from(
-              queue.properties.defaultMessageTimeToLive,
-            ).total("milliseconds"),
+      if (queue.properties.defaultMessageTimeToLive) {
+        populateMessageWithDefaultExpiryTime(
+          msg,
+          queue.properties.defaultMessageTimeToLive,
         )
-
-        msg.absolute_expiry_time = creation_time
       }
 
       m["delivery_count"] ??= 0

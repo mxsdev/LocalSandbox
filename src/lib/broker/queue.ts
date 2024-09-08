@@ -29,6 +29,7 @@ import {
   getQueueFromStoreOrThrow,
   getSubscriptionFromStoreOrThrow,
   getTopicFromStoreOrThrow,
+  populateMessageWithDefaultExpiryTime,
 } from "./util.js"
 
 interface QueueConsumerDeliveryInfo<M> {
@@ -528,6 +529,13 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         ) {
           continue
         }
+      }
+
+      if (queue.properties.defaultMessageTimeToLive) {
+        populateMessageWithDefaultExpiryTime(
+          message,
+          queue.properties.defaultMessageTimeToLive,
+        )
       }
 
       const scheduled_enqueued_time = message.message_annotations?.[

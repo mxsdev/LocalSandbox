@@ -12,6 +12,8 @@ import {
   SubscriptionModel,
   TopicModel,
 } from "./types.js"
+import { Message } from "rhea"
+import { Temporal } from "@js-temporal/polyfill"
 
 export const getQueueOrTopicOrSubscriptionFromStoreOrThrow = (
   queueId: QualifiedQueueOrTopicOrSubscriptionId | string,
@@ -361,4 +363,24 @@ export const isQualifiedMessageDestinationId = <T extends object>(val: T) => {
 
 export const isQualifiedMessageSourceId = <T extends object>(val: T) => {
   return isQualifiedQueueId(val) || isQualifiedSubscriptionId(val)
+}
+
+export const populateMessageWithDefaultExpiryTime = (
+  msg: Message,
+  defaultMessageTimeToLive: string,
+) => {
+  const defaultMessageTimeToLiveMs = Temporal.Duration.from(
+    defaultMessageTimeToLive,
+  ).total("milliseconds")
+
+  if (!msg.absolute_expiry_time) {
+    // TODO: check if changing the default TTL affects in-flight messages,
+    // or just newly scheduled ones
+    const creation_time = new Date(
+      (msg.creation_time ? new Date(msg.creation_time).getTime() : Date.now()) +
+        defaultMessageTimeToLiveMs,
+    )
+
+    msg.absolute_expiry_time = creation_time
+  }
 }
