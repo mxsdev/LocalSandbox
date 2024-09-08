@@ -1,18 +1,10 @@
 import type { Delivery, Message, Sender } from "rhea"
-import type {
-  BrokerStore,
-  QualifiedNamespaceId,
-  QualifiedQueueId,
-  QualifiedQueueIdWithSubqueueType,
-  SubqueueType,
-} from "./broker.js"
 import {
   BrokerQueue,
-  BrokerQueueWithSubqueues,
-  DeliveryTag,
-  SenderName,
+  BrokerSubscription,
+  BrokerTopic,
+  MessageSequence,
 } from "./queue.js"
-import { getPeerQueue, getQueueFromStoreOrThrow } from "./util.js"
 import { Logger } from "pino"
 import {
   ParsedTypedRheaMessage,
@@ -27,29 +19,61 @@ import {
   unserializedLongToBufferLike,
 } from "../util/long.js"
 import { Temporal } from "@js-temporal/polyfill"
+import {
+  _QualifiedQueueId,
+  BrokerStore,
+  QualifiedMessageDestinationId,
+  QualifiedMessageSourceId,
+  SubqueueType,
+  SubscriptionModel,
+} from "./types.js"
+import {
+  getMessageDestinationFromStoreOrThrow,
+  getMessageSourceFromStoreOrThrow,
+  getQueueFromStoreOrThrow,
+  isQualifiedMessageDestinationId,
+  isQualifiedTopicId,
+  isQualifiedTopicOrQueueId,
+  populateMessageWithDefaultExpiryTime,
+} from "./util.js"
+
+type Queue = BrokerQueue<ParsedTypedRheaMessageWithId>
+type Topic = BrokerTopic<ParsedTypedRheaMessageWithId>
+type Subscription = BrokerSubscription<ParsedTypedRheaMessageWithId>
 
 export class BrokerConsumerBalancer {
-  private _queues: Record<
-    string,
-    BrokerQueueWithSubqueues<ParsedTypedRheaMessageWithId>
-  > = {}
+  private _queues: Record<string, Queue> = {}
+  private _topics: Record<string, Topic> = {}
+  private _subscriptions: Record<string, Subscription> = {}
 
   constructor(
     private readonly store: BrokerStore,
     private readonly logger?: Logger,
   ) {}
 
-  queueMessageCount(queueId: QualifiedQueueIdWithSubqueueType) {
-    return this.getOrCreate(
-      this.getQueueFromStoreOrThrow(queueId).id,
-      queueId.subqueue,
-    ).messageCount
+  messageSourceMessageCount(queueId: QualifiedMessageSourceId | string) {
+    const message_source = this.getMessageSourceFromStoreOrThrow(queueId)
+
+    return (
+      this.getOrCreateMessageSource(message_source, undefined).messageCount +
+      this.getOrCreateMessageSource(message_source, "deadletter").messageCount
+    )
   }
 
-  queueMessageCountDetails(queueId: QualifiedQueueIdWithSubqueueType) {
-    return this.getOrCreate(
-      this.getQueueFromStoreOrThrow(queueId).id,
-      queueId.subqueue,
+  messageDestinationMessageCountDetails(
+    queueId: QualifiedMessageDestinationId | string,
+  ) {
+    return this.getOrCreateMessageDestination(
+      this.getMessageDestinationFromStoreOrThrow(queueId),
+    ).messageCountDetails
+  }
+
+  messageSourceMessageCountDetails(queueId: QualifiedMessageSourceId | string) {
+    return this.getOrCreateMessageSource(
+      this.getMessageSourceFromStoreOrThrow(queueId),
+
+      // TODO: should DLQ stats be included in overall count??
+      typeof queueId === "object" ? queueId.subqueue : undefined,
     ).messageCountDetails
   }
 
@@ -58,56 +82,54 @@ export class BrokerConsumerBalancer {
   }
 
   renewLock(
-    queueId: QualifiedQueueIdWithSubqueueType,
-    ...args: Parameters<BrokerQueue<any>["renewLock"]>
+    queueId: QualifiedMessageSourceId,
+    ...args: Parameters<MessageSequence<any>["renewLock"]>
   ) {
-    const queue = this.getQueueFromStoreOrThrow(queueId)
-    const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
+    const queue = this.getMessageSourceFromStoreOrThrow(queueId)
+    const broker_queue = this.getOrCreateMessageSource(queue, queueId.subqueue)
     return broker_queue.renewLock(...args)
   }
 
   updateConsumerDisposition(
-    queueId: QualifiedQueueIdWithSubqueueType,
-    ...args: Parameters<BrokerQueue<any>["updateConsumerDisposition"]>
+    queueId: QualifiedMessageSourceId,
+    ...args: Parameters<MessageSequence<any>["updateConsumerDisposition"]>
   ) {
-    const queue = this.getQueueFromStoreOrThrow(queueId)
-    const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
+    const queue = this.getMessageSourceFromStoreOrThrow(queueId)
+    const broker_queue = this.getOrCreateMessageSource(queue, queueId.subqueue)
     broker_queue.updateConsumerDisposition(...args)
   }
 
-  add(
-    qualifiedQueueId: QualifiedQueueIdWithSubqueueType,
-    sender: Sender,
-    sender_name?: string,
-  ) {
+  add(qualifiedQueueId: QualifiedMessageSourceId, sender: Sender) {
     // ensure queue exists
-    const queue = getQueueFromStoreOrThrow(
+    const queue = getMessageSourceFromStoreOrThrow(
       qualifiedQueueId,
       this.store,
       this.logger,
     )
 
-    this.addSenderToQueue(sender, queue.id, qualifiedQueueId.subqueue)
+    this.getOrCreateMessageSource(queue, qualifiedQueueId.subqueue).addConsumer(
+      sender,
+    )
   }
 
   peekMessageFromQueue(
-    queueId: QualifiedQueueIdWithSubqueueType,
+    queueId: QualifiedMessageSourceId,
     messageCount: number,
   ) {
     // TODO: handle when queue is deleted more gracefully
-    const queue = this.getQueueFromStoreOrThrow(queueId)
+    const queue = this.getMessageSourceFromStoreOrThrow(queueId)
 
-    return this.getOrCreate(queue.id, queueId.subqueue).peekMessages(
+    return this.getOrCreateMessageSource(queue, queueId.subqueue).peekMessages(
       messageCount,
     )
   }
 
   consumeDeferredMessages(
-    queueId: QualifiedQueueIdWithSubqueueType,
+    queueId: QualifiedMessageSourceId,
     ...sequenceIds: Long[]
   ) {
-    const queue = this.getQueueFromStoreOrThrow(queueId)
-    const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
+    const queue = this.getMessageSourceFromStoreOrThrow(queueId)
+    const broker_queue = this.getOrCreateMessageSource(queue, queueId.subqueue)
 
     return sequenceIds
       .map((sequenceId) => broker_queue.consumeDeferredMessage(sequenceId))
@@ -115,55 +137,37 @@ export class BrokerConsumerBalancer {
   }
 
   sendMessagesToQueue(
-    queueId: QualifiedQueueIdWithSubqueueType,
+    queueId: QualifiedMessageDestinationId,
     ...message: ParsedTypedRheaMessageWithId[]
   ): BufferLikeEncodedLong[] {
     // TODO: handle when queue is deleted more gracefully
-    const queue = this.getQueueFromStoreOrThrow(queueId)
+    const queue = this.getMessageDestinationFromStoreOrThrow(queueId)
 
     const messages = message.map((m) => {
       // const sequence_number = this.allocateSequenceNumber()
       const msg = m as Message
 
-      if (
-        !msg.absolute_expiry_time &&
-        queue.properties.defaultMessageTimeToLive
-      ) {
-        // TODO: check if changing the default TTL affects in-flight messages,
-        // or just newly scheduled ones
-        const creation_time = new Date(
-          (msg.creation_time
-            ? new Date(msg.creation_time).getTime()
-            : Date.now()) +
-            Temporal.Duration.from(
-              queue.properties.defaultMessageTimeToLive,
-            ).total("milliseconds"),
+      if (queue.properties.defaultMessageTimeToLive) {
+        populateMessageWithDefaultExpiryTime(
+          msg,
+          queue.properties.defaultMessageTimeToLive,
         )
-
-        msg.absolute_expiry_time = creation_time
       }
-
-      // m["message_annotations"] = {
-      //   ...m["message_annotations"],
-
-      //   [Constants.sequenceNumber]:
-      //     m["message_annotations"][Constants.sequenceNumber] ??
-      //     unserializedLongToBufferLike.parse(this.allocateSequenceNumber()),
-      // }
 
       m["delivery_count"] ??= 0
 
       return m
     })
 
-    const result_messages = this.getOrCreate(
-      queue.id,
-      queueId.subqueue,
+    const result_messages = this.getOrCreateMessageDestination(
+      queue,
     ).scheduleMessages(...messages)
 
     const sequence_numbers = result_messages.map(
       (m) => m.message_annotations[Constants.sequenceNumber],
     )
+
+    // TODO: dedupe sequence numbers
 
     this.logger?.debug({ sequence_numbers }, "assigned sequence numbers")
 
@@ -171,13 +175,21 @@ export class BrokerConsumerBalancer {
   }
 
   cancelScheduledMessage(
-    queueId: QualifiedQueueIdWithSubqueueType,
+    queueId: QualifiedMessageSourceId | QualifiedMessageDestinationId,
     sequence_number: Long,
   ) {
-    return this.getOrCreate(
-      this.getQueueFromStoreOrThrow(queueId).id,
-      queueId.subqueue,
-    ).cancelScheduledMessage(sequence_number)
+    if (isQualifiedTopicId(queueId) || isQualifiedTopicOrQueueId(queueId)) {
+      const topic_or_queue = this.getOrCreateMessageDestination(
+        this.getMessageDestinationFromStoreOrThrow(queueId),
+      )
+
+      return topic_or_queue.cancelScheduledMessage(sequence_number)
+    } else {
+      return this.getOrCreateMessageSource(
+        this.getMessageSourceFromStoreOrThrow(queueId),
+        queueId.subqueue,
+      ).cancelScheduledMessage(sequence_number)
+    }
   }
 
   remove(sender: Sender) {
@@ -185,18 +197,89 @@ export class BrokerConsumerBalancer {
     this.removeSenderFromAll(sender)
   }
 
-  private getOrCreate(queueId: string, subqueue: SubqueueType | undefined) {
+  setSequenceNumber(queue: _QualifiedQueueId, sequence_number: Long) {
+    // TODO: introduce public method for this purpose
+    this.getOrCreateQueue(this.getQueueFromStoreOrThrow(queue).id, undefined)[
+      "parent"
+    ]["sequence_number_factory"]["next_sequence_number"] = sequence_number
+  }
+
+  private getOrCreateMessageDestination(
+    queue: { id: string; _model: "sb_queue" | "sb_topic" },
+    // subqueue: SubqueueType | undefined,
+  ) {
+    switch (queue._model) {
+      case "sb_queue": {
+        return this.getOrCreateQueue(queue.id, undefined)
+      }
+
+      case "sb_topic": {
+        return this.getOrCreateTopic(queue.id)
+      }
+    }
+  }
+
+  getOrCreateMessageSource(
+    queue:
+      | { id: string; _model: "sb_queue" }
+      | { id: string; _model: "sb_subscription"; sb_topic_id: string },
+    subqueue: SubqueueType | undefined,
+  ) {
+    switch (queue._model) {
+      case "sb_queue": {
+        return this.getOrCreateQueue(queue.id, subqueue)
+      }
+
+      case "sb_subscription": {
+        return this.getOrCreateSubscription(
+          queue.id,
+          queue.sb_topic_id,
+          subqueue,
+        )
+      }
+    }
+  }
+
+  private getOrCreateQueue(
+    queueId: string,
+    subqueue: SubqueueType | undefined,
+  ) {
     if (this._queues[queueId]) {
       return this._queues[queueId].get(subqueue)
     } else {
-      const queue = new BrokerQueueWithSubqueues(
-        this.store,
-        queueId,
-        this.logger,
-        this,
-      )
+      const queue = new BrokerQueue(this.store, queueId, this.logger, this)
       this._queues[queueId] = queue
       return queue.get(subqueue)
+    }
+  }
+
+  private getOrCreateSubscription(
+    subscriptionId: string,
+    topicId: string,
+    subqueue: SubqueueType | undefined,
+  ) {
+    const topic = this.getOrCreateTopic(topicId)
+    const subscription = topic.getSubscription(subscriptionId)
+
+    if (!subscription) {
+      this.logger?.error(
+        { subscriptionId, topicId },
+        "Could not find subscription",
+      )
+
+      throw new Error("Could not find subscription")
+    }
+
+    return subscription.get(subqueue)
+  }
+
+  private getOrCreateTopic(topicId: string) {
+    if (this._topics[topicId]) {
+      return this._topics[topicId]
+    } else {
+      const topic = new BrokerTopic(this.store, topicId, this.logger, this)
+      this._topics[topicId] = topic
+      return topic
     }
   }
 
@@ -206,14 +289,6 @@ export class BrokerConsumerBalancer {
 
     queue.close()
     delete this._queues[queueId]
-  }
-
-  private addSenderToQueue(
-    sender: Sender,
-    queueId: string,
-    subqueue: SubqueueType | undefined,
-  ) {
-    this.getOrCreate(queueId, subqueue).addConsumer(sender)
   }
 
   private removeSenderFromAll(sender: Sender) {
@@ -226,21 +301,33 @@ export class BrokerConsumerBalancer {
     Object.keys(this._queues).forEach(this.delete.bind(this))
   }
 
-  private queue_cache: Record<string, string> = {}
-
-  private getQueueFromStoreOrThrow(queueId: string | QualifiedQueueId) {
-    const queue = getQueueFromStoreOrThrow(
-      typeof queueId === "string"
-        ? queueId
-        : (this.queue_cache[objectHash(queueId)] ?? queueId),
+  private getMessageDestinationFromStoreOrThrow(
+    queueId: string | QualifiedMessageDestinationId,
+  ) {
+    // TODO: cache this
+    const message_destination = getMessageDestinationFromStoreOrThrow(
+      queueId,
       this.store,
       this.logger,
     )
 
-    if (typeof queueId === "object") {
-      this.queue_cache[objectHash(queueId)] = queue.id
-    }
+    return message_destination
+  }
 
-    return queue
+  private getMessageSourceFromStoreOrThrow(
+    queueId: string | QualifiedMessageSourceId,
+  ) {
+    // TODO: cache this
+    const message_source = getMessageSourceFromStoreOrThrow(
+      queueId,
+      this.store,
+      this.logger,
+    )
+
+    return message_source
+  }
+
+  private getQueueFromStoreOrThrow(queueId: string | _QualifiedQueueId) {
+    return getQueueFromStoreOrThrow(queueId, this.store, this.logger)
   }
 }

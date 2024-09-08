@@ -129,7 +129,7 @@ type ModelTriggers<
   Root extends ModelSpecs<any>,
   ModelName extends keyof Root & string = keyof Root & string,
 > = {
-  change?: (
+  readonly change?: (
     args: ModelName extends keyof Root & string
       ? {
           model: ModelName
@@ -162,12 +162,28 @@ class Model<
   Spec extends ModelSpec<any, keyof Root & string>,
   ModelName extends keyof Root & string,
 > {
+  private trigger_fns: ModelTriggers<Root, ModelName>[] = []
+
+  readonly triggers: ModelTriggers<Root, ModelName> = {
+    change: (...args) => {
+      this.trigger_fns.forEach((t) => t.change?.(...args))
+    },
+  }
+
   constructor(
     protected spec: Spec,
     protected models: Store<Root>,
     protected modelName: ModelName,
-    public triggers: ModelTriggers<Root> = {},
   ) {}
+
+  registerTrigger(trigger: ModelTriggers<Root, ModelName>) {
+    this.trigger_fns.push(trigger)
+    return trigger
+  }
+
+  unregisterTrigger(trigger: ModelTriggers<Root, ModelName>) {
+    this.trigger_fns = this.trigger_fns.filter((t) => t !== trigger)
+  }
 
   private createNewInstance(models: Store<Root>) {
     return new Model(this.spec, models, this.modelName)
@@ -175,7 +191,8 @@ class Model<
 
   protected mutex = new Mutex()
 
-  _type!: SpecWithRelationalJoin<Root, Spec, ModelName>
+  _type!: SpecWithRelationalJoin<Root, Spec, ModelName> &
+    SpecWithRelationalId<Root, Spec>
 
   protected _store: Record<
     z.output<SchemaShape<Spec["schema"]>[Spec["primaryKey"]]>,
@@ -236,14 +253,14 @@ class Model<
 
   get(
     primaryKey: z.output<SchemaShape<Spec["schema"]>[Spec["primaryKey"]]>,
-  ): SpecWithRelationalJoin<Root, Spec, ModelName> | undefined {
+  ): typeof this._type | undefined {
     return this.store[primaryKey]
   }
 
   getOrThrow(
     primaryKey: z.output<SchemaShape<Spec["schema"]>[Spec["primaryKey"]]>,
     err?: LazyError,
-  ): SpecWithRelationalJoin<Root, Spec, ModelName> {
+  ): typeof this._type {
     const res = this.get(primaryKey)
 
     if (!res) {
@@ -277,7 +294,8 @@ class ModelSelectBuilder<
   Root extends ModelSpecs<any>,
   Spec extends ModelSpec<any, any>,
   ModelName extends keyof Root & string,
-  Output = SpecWithRelationalJoin<Root, Spec, ModelName>,
+  Output = SpecWithRelationalJoin<Root, Spec, ModelName> &
+    SpecWithRelationalId<Root, Spec>,
 > {
   private get mutex() {
     return this.root["mutex"]
@@ -554,10 +572,7 @@ type Store<MS extends ModelSpecs<any>> = {
   [Key in keyof MS & string]: Model<MS, MS[Key], Key>
 }
 
-export const getStore = <const MS extends ModelSpecs<any>>(
-  modelSpecs: MS,
-  triggers?: ModelTriggers<MS>,
-) => {
+export const getStore = <const MS extends ModelSpecs<any>>(modelSpecs: MS) => {
   let models: Store<MS> = {} as any
 
   Object.assign(
@@ -565,7 +580,7 @@ export const getStore = <const MS extends ModelSpecs<any>>(
     Object.fromEntries(
       Object.entries(modelSpecs).map(([modelName, modelSpec]) => [
         modelName,
-        new Model(modelSpec as any, models, modelName, triggers),
+        new Model(modelSpec as any, models, modelName),
       ]),
     ),
   )
@@ -576,16 +591,22 @@ export const getStore = <const MS extends ModelSpecs<any>>(
 interface IntegrationSpec<MS extends ModelSpecs<any>, GS extends GlobalSpec> {
   globalSpec: GS
   models: MS
-  triggers?: ModelTriggers<MS>
+  triggers?: Partial<{ [K in keyof MS & string]: ModelTriggers<MS, K> }>
 }
 
 export function createIntegration<
   const MS extends ModelSpecs<any>,
   const GS extends GlobalSpec,
 >(integrationSpec: IntegrationSpec<MS, GS>) {
-  const { models: modelSpecs, globalSpec, triggers } = integrationSpec
+  const { models: modelSpecs, globalSpec } = integrationSpec
 
-  const models = getStore(modelSpecs, triggers)
+  const models = getStore(modelSpecs)
+
+  for (const [modelName, trigger] of Object.entries(
+    integrationSpec.triggers ?? {},
+  )) {
+    models[modelName]!.registerTrigger(trigger)
+  }
 
   const storeMiddleware: Middleware<{}, { store: Store<MS> }> = async (
     req,

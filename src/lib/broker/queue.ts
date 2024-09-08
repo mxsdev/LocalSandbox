@@ -1,18 +1,9 @@
-import rhea from "rhea"
+import rhea, { message } from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
 import { Delivery, Message, Sender, SenderEvents } from "rhea"
 import { Deque } from "@datastructures-js/deque"
-import { Logger } from "pino"
+import { Logger, P } from "pino"
 import { Constants } from "@azure/core-amqp"
-import {
-  BrokerStore,
-  QualifiedQueueIdWithSubqueueType,
-  SubqueueType,
-} from "./broker.js"
-import {
-  getQualifiedQueueIdFromStoreQueue,
-  getQueueFromStoreOrThrow,
-} from "./util.js"
 import Long from "long"
 import {
   BufferLikeEncodedLong,
@@ -24,14 +15,27 @@ import { uuidToString } from "../util/uuid.js"
 import { MessageCountDetails } from "@azure/arm-servicebus"
 import { BrokerConstants } from "./constants.js"
 import { z } from "zod"
+import {
+  BrokerStore,
+  DeliveryTag,
+  QualifiedMessageDestinationId,
+  QueueModel,
+  SenderName,
+  SubqueueType,
+  SubscriptionModel,
+} from "./types.js"
+import {
+  getQualifiedIdFromModel,
+  getQueueFromStoreOrThrow,
+  getSubscriptionFromStoreOrThrow,
+  getTopicFromStoreOrThrow,
+  populateMessageWithDefaultExpiryTime,
+} from "./util.js"
 
 interface QueueConsumerDeliveryInfo<M> {
   delivery: Delivery
   message: M
 }
-
-export type DeliveryTag = Pick<Delivery, "tag"> & Partial<Pick<Delivery, "id">>
-export type SenderName = Pick<Sender, "name">
 
 type MessageWithProperties<Base extends Message, MessageAnnotations> = Base & {
   message_annotations: MessageAnnotations
@@ -43,6 +47,55 @@ type MessageWithSequenceNumber<Base extends Message> = MessageWithProperties<
     [Constants.sequenceNumber]: BufferLikeEncodedLong
   }
 >
+
+class MessageScheduler<M extends Message> {
+  private scheduled_messages: Record<
+    string,
+    { timeout: NodeJS.Timeout; message: ScheduledMessage<M> }
+  > = {}
+
+  constructor(private sendMessage: (message: ScheduledMessage<M>) => void) {}
+
+  get messages() {
+    return Object.values(this.scheduled_messages).map(({ message }) => message)
+  }
+
+  scheduleMessage(message: ScheduledMessage<M>, scheduled_enqueued_time: Date) {
+    const message_sequence_number_id = serializedLong
+      .parse(message.message_annotations[Constants.sequenceNumber])
+      .toString()
+
+    message.message_annotations[Constants.messageState] =
+      BrokerConstants.messageState.scheduled
+
+    this.scheduled_messages[message_sequence_number_id] = {
+      timeout: setTimeout(() => {
+        delete this.scheduled_messages[message_sequence_number_id]
+        this.sendMessage(message)
+      }, scheduled_enqueued_time.getTime() - Date.now()),
+      message,
+    }
+
+    return message
+  }
+
+  cancelMessage(sequence_number: Long) {
+    const existing_timeout = this.scheduled_messages[sequence_number.toString()]
+
+    if (!existing_timeout) {
+      return false
+    }
+
+    clearTimeout(existing_timeout.timeout)
+    return true
+  }
+
+  close() {
+    Object.values(this.scheduled_messages).forEach(({ timeout }) =>
+      clearTimeout(timeout),
+    )
+  }
+}
 
 class DeliveryMap<T> {
   private _deliveries: Record<string, T> = {}
@@ -86,16 +139,38 @@ class DeliveryMap<T> {
 }
 
 class SequenceNumberFactory {
-  private next_sequence_number = new Long(1)
+  constructor(private initial_sequence_number = new Long(1)) {}
+
+  private next_sequence_number = this.initial_sequence_number
 
   allocateNextSequenceNumber() {
     const sequence_number = this.next_sequence_number
     this.next_sequence_number = this.next_sequence_number.add(1)
     return sequence_number
   }
+
+  bindToMessage<M extends Message>(msg: M, force_reallocation = false) {
+    msg.message_annotations ??= {}
+
+    if (force_reallocation) {
+      msg.message_annotations[Constants.sequenceNumber] =
+        unserializedLongToBufferLike.parse(this.allocateNextSequenceNumber())
+    } else {
+      msg.message_annotations[Constants.sequenceNumber] ??=
+        unserializedLongToBufferLike.parse(this.allocateNextSequenceNumber())
+    }
+
+    return msg as typeof msg & {
+      message_annotations: {
+        [Constants.sequenceNumber]: z.output<
+          typeof unserializedLongToBufferLike
+        >
+      }
+    }
+  }
 }
 
-interface QueueConsumer<M> {
+interface MessageConsumer<M> {
   sender: Sender
   current_delivery: DeliveryMap<QueueConsumerDeliveryInfo<M>>
   listeners: Partial<Record<SenderEvents, (...args: any[]) => void>>
@@ -109,7 +184,10 @@ type TaggedMessage = Message & {
   message_annotations?: Record<string, any>
 }
 
-export class BrokerQueue<M extends TaggedMessage> {
+// TODO: include subscription model
+type QueueOrSubscription = QueueModel | SubscriptionModel
+
+export abstract class MessageSequence<M extends TaggedMessage> {
   private _messages = new Deque<{
     message: ScheduledMessage<M>
     scheduled_at: Date
@@ -124,29 +202,30 @@ export class BrokerQueue<M extends TaggedMessage> {
       lock_duration_ms: number
     }
   >()
-  private scheduled_messages: Record<
-    string,
-    { timeout: NodeJS.Timeout; message: ScheduledMessage<M> }
-  > = {}
+  private message_scheduler = new MessageScheduler<ScheduledMessage<M>>(
+    (message) => {
+      this.enqueue(message)
+      this.tryFlush()
+    },
+  )
 
   private message_expiration_timeouts: Record<string, NodeJS.Timeout> = {}
 
-  private consumers: Record<string, QueueConsumer<ScheduledMessage<M>>> = {}
+  private consumers: Record<string, MessageConsumer<ScheduledMessage<M>>> = {}
 
   private num_messages_transferred_to_dlq: number = 0
 
   constructor(
-    private store: BrokerStore,
-    public queue_id: string,
-    private logger: Logger | undefined,
+    protected store: BrokerStore,
+    public queue_or_subscription_id: string,
+    protected logger: Logger | undefined,
     private consumer_balancer: BrokerConsumerBalancer,
+    protected parent: BrokerMessageSequenceWithSubqueues<M>,
     private sequence_number_factory = new SequenceNumberFactory(),
   ) {}
 
-  private get queue() {
-    // TODO: handle deletes more gracefully..
-    return getQueueFromStoreOrThrow(this.queue_id, this.store, this.logger)
-  }
+  abstract queue_type: "sb_queue" | "sb_subscription"
+  abstract get queue(): QueueOrSubscription
 
   private get fifo() {
     return false
@@ -184,24 +263,43 @@ export class BrokerQueue<M extends TaggedMessage> {
    * sent
    */
   private propagateAccess() {
-    this.logger?.debug("Propagating access...")
+    this.logger?.debug(
+      {
+        queue_or_subscription_id: this.queue_or_subscription_id,
+        queue_type: this.queue_type,
+      },
+      "Propagating access...",
+    )
 
-    this.store.sb_queue
-      .update()
-      .where((q) => q.id === this.queue_id)
-      .set((v) => ({
-        properties: {
-          ...v.properties,
-          accessedAt: new Date().toISOString(),
-        },
-      }))
-      .execute()
-  }
+    switch (this.queue_type) {
+      case "sb_queue":
+        {
+          this.store.sb_queue
+            .update()
+            .where((q) => q.id === this.queue_or_subscription_id)
+            .set((v) => ({
+              properties: {
+                ...v.properties,
+                accessedAt: new Date().toISOString(),
+              },
+            }))
+            .executeTakeFirstOrThrow()
+        }
+        break
 
-  consumeDeferredMessage(sequenceId: Long) {
-    const res = this.deferred_messages.get(sequenceId.toString())
-    this.deferred_messages.delete(sequenceId.toString())
-    return res
+      case "sb_subscription": {
+        this.store.sb_subscription
+          .update()
+          .where((q) => q.id === this.queue_or_subscription_id)
+          .set((v) => ({
+            properties: {
+              ...v.properties,
+              accessedAt: new Date().toISOString(),
+            },
+          }))
+          .executeTakeFirstOrThrow()
+      }
+    }
   }
 
   private tryDeadletterMessage(
@@ -211,61 +309,212 @@ export class BrokerQueue<M extends TaggedMessage> {
   ) {
     const queue = this.queue
 
+    this.logger?.debug(
+      {
+        reason,
+        description,
+        message: message.message_id,
+        sequence_number: message.message_annotations[Constants.sequenceNumber],
+      },
+      "Deadlettering message",
+    )
+
     if (queue.properties.forwardDeadLetteredMessagesTo === queue.name) {
+      // TODO: parity test this error
       throw new Error("Cannot dead-letter to self")
     }
 
-    const queue_id = getQualifiedQueueIdFromStoreQueue(queue)
-
-    // TODO: should we throw here if there's no queue, or if queue is invalid?
-    // TODO: should we throw here if the message has already been dead lettered?
-    const dlq_id: QualifiedQueueIdWithSubqueueType = {
-      ...queue_id,
-      queue_name: queue.properties.forwardDeadLetteredMessagesTo ?? queue.name!,
-      subqueue: queue.properties.forwardDeadLetteredMessagesTo
-        ? undefined
-        : "deadletter",
-    }
-
-    if (!dlq_id.subqueue) {
-      message.message_annotations[Constants.deadLetterSource] = queue.name!
-    }
+    const queue_id = getQualifiedIdFromModel(queue)
 
     message.message_annotations[Constants.deadLetterReason] = reason
     message.message_annotations[Constants.deadLetterDescription] = description
 
-    this.consumer_balancer.sendMessagesToQueue(dlq_id, message)
+    if (queue.properties.forwardDeadLetteredMessagesTo) {
+      // send to destination
+      message.message_annotations[Constants.deadLetterSource] =
+        queue._model === "sb_queue"
+          ? queue.name!
+          : `${queue.sb_topic().name!}/${BrokerConstants.subscriptionsSubqueue}/${queue.name!}`
+
+      if (queue._model === "sb_subscription") {
+        // TODO: better understand the circumstances when we need to update this value
+        message.message_annotations[Constants.enqueueSequenceNumber] =
+          message.message_annotations[Constants.sequenceNumber]
+        // @ts-expect-error This property is not needed for sendMessagesToQueue below
+        delete message.message_annotations[Constants.sequenceNumber]
+      }
+
+      // TODO: should we throw here if there's no queue, or if queue is invalid?
+      // TODO: should we throw here if the message has already been dead lettered?
+
+      const dlq_id: QualifiedMessageDestinationId = {
+        namespace_name: queue_id.namespace_name,
+        resource_group_name: queue_id.resource_group_name,
+        subscription_id: queue_id.subscription_id,
+        queue_or_topic_name: queue.properties.forwardDeadLetteredMessagesTo,
+        subqueue: undefined,
+      }
+
+      this.logger?.debug({ dlq_id }, "Forwarding deadlettered message")
+
+      this.consumer_balancer.sendMessagesToQueue(dlq_id, message)
+    } else {
+      this.logger?.debug("Forwarding deadlettered message to DLQ subqueue")
+      this.parent.get("deadletter").scheduleMessages(message)
+    }
 
     // TODO: figure out when "transfers" occur
     // this.num_messages_transferred_to_dlq++
   }
 
-  scheduleMessages(...sourceMessages: M[]) {
-    const messages = sourceMessages.map((msg) => {
-      msg.message_annotations ??= {}
-      msg.message_annotations[Constants.sequenceNumber] ??=
-        unserializedLongToBufferLike.parse(
-          this.sequence_number_factory.allocateNextSequenceNumber(),
+  private listNonExpiredMessages(args: { include_locked: boolean }) {
+    return [
+      ...this._messages.toArray().map(({ message }) => message),
+      ...(args.include_locked
+        ? [...this.locked_messages.values()].map(({ message }) => message)
+        : []),
+      ...[...this.deferred_messages.values()],
+      ...this.message_scheduler.messages,
+    ].filter(
+      (m) =>
+        !m.absolute_expiry_time ||
+        new Date(m.absolute_expiry_time) > new Date(),
+    )
+  }
+
+  private scheduleMessagesInFront(...message: ScheduledMessage<M>[]) {
+    this.enqueueFront(...message)
+    this.tryFlush()
+  }
+
+  private finishDelivery(
+    consumer: (typeof this.consumers)[number],
+    delivery: Delivery,
+  ) {
+    consumer.current_delivery["finish"](delivery)
+
+    if (
+      consumer.current_delivery.length === 0 &&
+      consumer.schedule_for_deletion
+    ) {
+      this.logger?.debug(
+        { sender: consumer.sender.name },
+        "Deleting consumer since all deliveries are completed",
+      )
+      delete this.consumers[consumer.sender.name]
+    }
+
+    this.refreshIdleTimeout()
+  }
+
+  private tryFlush() {
+    let consumer: MessageConsumer<ScheduledMessage<M>> | undefined
+
+    const lockDurationMs = Temporal.Duration.from(
+      this.queue.properties.lockDuration,
+    ).total("milliseconds")
+
+    this.refreshIdleTimeout()
+    this.propagateAccess()
+
+    while (
+      (consumer = Object.values(this.consumers).find(
+        (consumer) =>
+          consumer.sender.sendable() &&
+          consumer.sender.is_open() &&
+          consumer.sender.is_remote_open() &&
+          (!this.fifo || this.locked_messages.size === 0) &&
+          this._messages.size() > 0,
+      ))
+    ) {
+      const { message } = this.dequeue()!
+
+      // check expired
+      if (
+        message.absolute_expiry_time &&
+        new Date(message.absolute_expiry_time) <= new Date()
+      ) {
+        this.logger?.debug(
+          {
+            message_id: message.message_id,
+            ttl: message.ttl,
+            absolute_expiry_time: message.absolute_expiry_time,
+            queue: this.queue_or_subscription_id,
+          },
+          "Preventing message from sending due to expiration",
         )
-      return msg as typeof msg & {
-        message_annotations: {
-          [Constants.sequenceNumber]: z.output<
-            typeof unserializedLongToBufferLike
-          >
-        }
+        continue
       }
-    })
+
+      const consumer_copy = consumer
+
+      // TODO: check queue lock mode?
+      this.locked_messages.set(message.message_id, {
+        message,
+        lock_duration_ms: lockDurationMs,
+        timeout: setTimeout(() => {
+          this.logger?.debug(
+            {
+              delivery_id: delivery.id,
+              consumer: consumer_copy.sender.name,
+              message_id: message.message_id,
+            },
+            "Unlocking message due to lock timeout!",
+          )
+
+          this.finishDelivery(consumer_copy, delivery)
+
+          this.locked_messages.delete(message.message_id)
+          // TODO: check docs to see where this should be redelivered (front, back?)
+          this.scheduleMessagesInFront(message)
+        }, lockDurationMs),
+      })
+
+      message.message_annotations[Constants.lockedUntil] =
+        +new Date().getTime() + lockDurationMs
+
+      // TODO: timeout
+      const delivery = consumer.sender.send(message)
+
+      message.delivery_count ??= 0
+      message.delivery_count += 1
+
+      this.logger?.debug(
+        {
+          delivery_id: delivery.id,
+          consumer: consumer.sender.name,
+          delivery_tag: Buffer.from(delivery.tag).length,
+        },
+        "Sent message",
+      )
+
+      consumer.current_delivery.store(delivery, { delivery, message })
+    }
+  }
+
+  scheduleMessages(...sourceMessages: M[]): ScheduledMessage<M>[] {
+    const messages = sourceMessages.map((msg) =>
+      this.sequence_number_factory.bindToMessage(msg),
+    )
 
     const messages_for_immediate_delivery: ScheduledMessage<M>[] = []
 
     const queue = this.queue
 
-    for (const message of messages) {
-      if (queue.properties.requiresDuplicateDetection) {
-        const duplicateDetectionMs = Temporal.Duration.from(
-          queue.properties.duplicateDetectionHistoryTimeWindow,
-        ).total("milliseconds")
+    const requiresDuplicateDetection =
+      queue._model === "sb_queue"
+        ? "requiresDuplicateDetection" in queue.properties &&
+          !!queue.properties.requiresDuplicateDetection
+        : !!queue.sb_topic().properties.requiresDuplicateDetection
 
+    const duplicateDetectionMs = Temporal.Duration.from(
+      queue._model === "sb_queue"
+        ? queue.properties.duplicateDetectionHistoryTimeWindow
+        : queue.sb_topic().properties.duplicateDetectionHistoryTimeWindow,
+    ).total("milliseconds")
+
+    for (const message of messages) {
+      if (requiresDuplicateDetection) {
         if (
           this._messages
             .toArray()
@@ -280,6 +529,13 @@ export class BrokerQueue<M extends TaggedMessage> {
         ) {
           continue
         }
+      }
+
+      if (queue.properties.defaultMessageTimeToLive) {
+        populateMessageWithDefaultExpiryTime(
+          message,
+          queue.properties.defaultMessageTimeToLive,
+        )
       }
 
       const scheduled_enqueued_time = message.message_annotations?.[
@@ -314,38 +570,42 @@ export class BrokerQueue<M extends TaggedMessage> {
         )
       }
 
-      if (
-        scheduled_enqueued_time &&
-        !(scheduled_enqueued_time instanceof Date)
-      ) {
-        throw new Error(
-          `Expected ${Constants.scheduledEnqueueTime} to be parsed as JS Date instance`,
-        )
-      }
+      if (this.queue_type === "sb_queue") {
+        if (
+          scheduled_enqueued_time &&
+          !(scheduled_enqueued_time instanceof Date)
+        ) {
+          throw new Error(
+            `Expected ${Constants.scheduledEnqueueTime} to be parsed as JS Date instance`,
+          )
+        }
 
-      if (
-        scheduled_enqueued_time &&
-        scheduled_enqueued_time.getTime() > Date.now()
-      ) {
-        const message_sequence_number_id = serializedLong
-          .parse(message.message_annotations[Constants.sequenceNumber])
-          .toString()
-
-        message.message_annotations[Constants.messageState] =
-          BrokerConstants.messageState.scheduled
-
-        this.scheduled_messages[message_sequence_number_id] = {
-          timeout: setTimeout(() => {
-            delete this.scheduled_messages[message_sequence_number_id]
-            this.enqueue(message)
-            this.tryFlush()
-          }, scheduled_enqueued_time.getTime() - Date.now()),
-          message,
+        if (
+          scheduled_enqueued_time &&
+          scheduled_enqueued_time.getTime() > Date.now()
+        ) {
+          this.message_scheduler.scheduleMessage(
+            message,
+            scheduled_enqueued_time,
+          )
+        } else {
+          messages_for_immediate_delivery.push(message)
         }
       } else {
         messages_for_immediate_delivery.push(message)
       }
     }
+
+    this.logger?.debug(
+      {
+        requiresDuplicateDetection,
+        duplicateDetectionMs,
+        messages: messages.length,
+        queue: this.queue_or_subscription_id,
+        messages_for_immediate_delivery: messages_for_immediate_delivery.length,
+      },
+      "Scheduling messages",
+    )
 
     this.enqueue(...messages_for_immediate_delivery)
     this.tryFlush()
@@ -353,21 +613,10 @@ export class BrokerQueue<M extends TaggedMessage> {
     return messages
   }
 
-  private listNonExpiredMessages(args: { include_locked: boolean }) {
-    return [
-      ...this._messages.toArray().map(({ message }) => message),
-      ...(args.include_locked
-        ? [...this.locked_messages.values()].map(({ message }) => message)
-        : []),
-      ...[...this.deferred_messages.values()],
-      ...[...Object.values(this.scheduled_messages)].map(
-        ({ message }) => message,
-      ),
-    ].filter(
-      (m) =>
-        !m.absolute_expiry_time ||
-        new Date(m.absolute_expiry_time) > new Date(),
-    )
+  consumeDeferredMessage(sequenceId: Long) {
+    const res = this.deferred_messages.get(sequenceId.toString())
+    this.deferred_messages.delete(sequenceId.toString())
+    return res
   }
 
   // TODO: which messages should/shouldn't be included in the count??
@@ -418,40 +667,7 @@ export class BrokerQueue<M extends TaggedMessage> {
 
   cancelScheduledMessage(sequence_number: Long): boolean {
     this.refreshIdleTimeout()
-
-    const existing_timeout = this.scheduled_messages[sequence_number.toString()]
-
-    if (!existing_timeout) {
-      return false
-    }
-
-    clearTimeout(existing_timeout.timeout)
-    return true
-  }
-
-  private scheduleMessagesInFront(...message: ScheduledMessage<M>[]) {
-    this.enqueueFront(...message)
-    this.tryFlush()
-  }
-
-  finishDelivery(
-    consumer: (typeof this.consumers)[number],
-    delivery: Delivery,
-  ) {
-    consumer.current_delivery["finish"](delivery)
-
-    if (
-      consumer.current_delivery.length === 0 &&
-      consumer.schedule_for_deletion
-    ) {
-      this.logger?.debug(
-        { sender: consumer.sender.name },
-        "Deleting consumer since all deliveries are completed",
-      )
-      delete this.consumers[consumer.sender.name]
-    }
-
-    this.refreshIdleTimeout()
+    return this.message_scheduler.cancelMessage(sequence_number)
   }
 
   renewLock(sender: SenderName, delivery_tag: DeliveryTag) {
@@ -616,7 +832,7 @@ export class BrokerQueue<M extends TaggedMessage> {
 
   addConsumer(sender: Sender) {
     this.logger?.debug(
-      { sender: sender.name, queue_id: this.queue_id },
+      { sender: sender.name, queue_id: this.queue_or_subscription_id },
       "Registering sender",
     )
 
@@ -713,128 +929,53 @@ export class BrokerQueue<M extends TaggedMessage> {
   }
 
   close() {
-    Object.values(this.scheduled_messages).forEach(({ timeout }) =>
-      clearTimeout(timeout),
-    )
+    this.message_scheduler.close()
     Object.values(this.message_expiration_timeouts).forEach(clearTimeout)
 
     Object.values(this.locked_messages).forEach(({ timeout }) =>
       clearTimeout(timeout),
     )
   }
+}
 
-  private tryFlush() {
-    let consumer: QueueConsumer<ScheduledMessage<M>> | undefined
+class InnerQueue<M extends TaggedMessage> extends MessageSequence<M> {
+  override queue_type = "sb_queue" as const
 
-    const lockDurationMs = Temporal.Duration.from(
-      this.queue.properties.lockDuration,
-    ).total({ unit: "millisecond" })
-
-    this.refreshIdleTimeout()
-
-    while (
-      (consumer = Object.values(this.consumers).find(
-        (consumer) =>
-          consumer.sender.sendable() &&
-          consumer.sender.is_open() &&
-          consumer.sender.is_remote_open() &&
-          (!this.fifo || this.locked_messages.size === 0) &&
-          this._messages.size() > 0,
-      ))
-    ) {
-      const { message } = this.dequeue()!
-
-      // check expired
-      if (
-        message.absolute_expiry_time &&
-        new Date(message.absolute_expiry_time) <= new Date()
-      ) {
-        this.logger?.debug(
-          {
-            message_id: message.message_id,
-            ttl: message.ttl,
-            absolute_expiry_time: message.absolute_expiry_time,
-            queue: this.queue_id,
-          },
-          "Preventing message from sending due to expiration",
-        )
-        continue
-      }
-
-      const consumer_copy = consumer
-
-      // TODO: check queue lock mode?
-      this.locked_messages.set(message.message_id, {
-        message,
-        lock_duration_ms: lockDurationMs,
-        timeout: setTimeout(() => {
-          this.logger?.debug(
-            {
-              delivery_id: delivery.id,
-              consumer: consumer_copy.sender.name,
-              message_id: message.message_id,
-            },
-            "Unlocking message due to lock timeout!",
-          )
-
-          this.finishDelivery(consumer_copy, delivery)
-
-          this.locked_messages.delete(message.message_id)
-          // TODO: check docs to see where this should be redelivered (front, back?)
-          this.scheduleMessagesInFront(message)
-        }, lockDurationMs),
-      })
-
-      message.message_annotations[Constants.lockedUntil] =
-        +new Date().getTime() + lockDurationMs
-
-      // TODO: timeout
-      const delivery = consumer.sender.send(message)
-
-      message.delivery_count ??= 0
-      message.delivery_count += 1
-
-      this.logger?.debug(
-        {
-          delivery_id: delivery.id,
-          consumer: consumer.sender.name,
-          delivery_tag: Buffer.from(delivery.tag).length,
-        },
-        "Sent message",
-      )
-
-      consumer.current_delivery.store(delivery, { delivery, message })
-
-      this.propagateAccess()
-    }
+  override get queue() {
+    return getQueueFromStoreOrThrow(
+      this.queue_or_subscription_id,
+      this.store,
+      this.logger,
+    )
   }
 }
 
-export class BrokerQueueWithSubqueues<M extends TaggedMessage> {
+class InnerSubscription<M extends TaggedMessage> extends MessageSequence<M> {
+  override queue_type = "sb_subscription" as const
+
+  override get queue() {
+    return getSubscriptionFromStoreOrThrow(
+      this.queue_or_subscription_id,
+      this.store,
+      this.logger,
+    )
+  }
+}
+
+abstract class BrokerMessageSequenceWithSubqueues<M extends TaggedMessage> {
+  protected abstract createMessageSequence(): MessageSequence<M>
+
   constructor(
-    private store: BrokerStore,
+    protected store: BrokerStore,
     public queue_id: string,
-    private logger: Logger | undefined,
-    private consumer_balancer: BrokerConsumerBalancer,
+    protected logger: Logger | undefined,
+    protected consumer_balancer: BrokerConsumerBalancer,
   ) {}
 
-  private sequence_number_factory = new SequenceNumberFactory()
+  protected sequence_number_factory = new SequenceNumberFactory()
 
-  private queue = new BrokerQueue<M>(
-    this.store,
-    this.queue_id,
-    this.logger,
-    this.consumer_balancer,
-    this.sequence_number_factory,
-  )
-
-  private queue_deadletter = new BrokerQueue<M>(
-    this.store,
-    this.queue_id,
-    this.logger,
-    this.consumer_balancer,
-    this.sequence_number_factory,
-  )
+  private queue = this.createMessageSequence()
+  private queue_deadletter = this.createMessageSequence()
 
   get(subqueue_type?: SubqueueType) {
     if (subqueue_type === "deadletter") {
@@ -844,7 +985,7 @@ export class BrokerQueueWithSubqueues<M extends TaggedMessage> {
     return this.queue
   }
 
-  removeConsumers(...args: Parameters<BrokerQueue<M>["removeConsumers"]>) {
+  removeConsumers(...args: Parameters<MessageSequence<M>["removeConsumers"]>) {
     this.queue.removeConsumers(...args)
     this.queue_deadletter.removeConsumers(...args)
   }
@@ -852,5 +993,233 @@ export class BrokerQueueWithSubqueues<M extends TaggedMessage> {
   close() {
     this.queue_deadletter.close()
     this.queue.close()
+  }
+}
+
+export class BrokerQueue<
+  M extends TaggedMessage,
+> extends BrokerMessageSequenceWithSubqueues<M> {
+  override createMessageSequence(): MessageSequence<M> {
+    return new InnerQueue(
+      this.store,
+      this.queue_id,
+      this.logger,
+      this.consumer_balancer,
+      this,
+      this.sequence_number_factory,
+    )
+  }
+}
+
+export class BrokerSubscription<
+  M extends TaggedMessage,
+> extends BrokerMessageSequenceWithSubqueues<M> {
+  override createMessageSequence(): MessageSequence<M> {
+    return new InnerSubscription(
+      this.store,
+      this.queue_id,
+      this.logger,
+      this.consumer_balancer,
+      this,
+      this.sequence_number_factory,
+    )
+  }
+
+  private closeListeners: (() => void)[] = []
+
+  onClose(listener: () => void) {
+    this.closeListeners.push(listener)
+  }
+
+  // TODO: close subscription on deletion
+  override close(): void {
+    this.closeListeners.forEach((l) => l())
+    this.closeListeners = []
+
+    super.close()
+  }
+}
+
+export class BrokerTopic<M extends TaggedMessage> {
+  private get topic() {
+    return getTopicFromStoreOrThrow(this.topic_id, this.store, this.logger)
+  }
+
+  private subscription_trigger_fn: any
+
+  private sequence_number_factory = new SequenceNumberFactory(new Long(1))
+
+  private message_scheduler = new MessageScheduler<M>((message) => {
+    this.logger?.debug(
+      {
+        message_id: message.message_id,
+        num_subscriptions: this.subscriptions.length,
+      },
+      "Enqueueing scheduled message",
+    )
+
+    this.enqueue(message, true)
+    this.propagateAccess()
+  })
+
+  constructor(
+    protected store: BrokerStore,
+    public topic_id: string,
+    protected logger: Logger | undefined,
+    private consumer_balancer: BrokerConsumerBalancer,
+  ) {
+    this.subscription_trigger_fn = store.sb_subscription.registerTrigger({
+      change: (args) => {
+        if (!args.old_val || !args.new_val) {
+          this.refreshSubscriptions()
+        }
+      },
+    })
+
+    this.refreshSubscriptions()
+  }
+
+  private refreshSubscriptions() {
+    const subscriptions = this.topic.sb_subscriptions()
+
+    const registered_subscription_ids = new Set(
+      this.subscriptions.map((s) => s.queue_id),
+    )
+    const existing_subscription_ids = new Set(subscriptions.map((s) => s.id))
+
+    for (const subscription of subscriptions) {
+      if (!registered_subscription_ids.has(subscription.id)) {
+        this.registerSubscription(
+          new BrokerSubscription<M>(
+            this.store,
+            subscription.id,
+            this.logger,
+            this.consumer_balancer,
+          ),
+        )
+      }
+    }
+
+    for (const registered_subscription of [...this.subscriptions]) {
+      if (!existing_subscription_ids.has(registered_subscription.queue_id)) {
+        registered_subscription.close()
+      }
+    }
+  }
+
+  private subscriptions: BrokerSubscription<M>[] = []
+
+  private registerSubscription(subscription: BrokerSubscription<M>) {
+    subscription.onClose(
+      () =>
+        (this.subscriptions = this.subscriptions.filter(
+          (s) => s !== subscription,
+        )),
+    )
+
+    this.subscriptions.push(subscription)
+  }
+
+  private propagateAccess() {
+    this.logger?.debug(
+      {
+        topic_id: this.topic_id,
+      },
+      "Propagating access...",
+    )
+
+    this.store.sb_topic
+      .update()
+      .where((q) => q.id === this.topic_id)
+      .set((v) => ({
+        properties: {
+          ...v.properties,
+          accessedAt: new Date().toISOString(),
+        },
+      }))
+      .executeTakeFirstOrThrow()
+  }
+
+  get messageCountDetails(): MessageCountDetails {
+    return {
+      scheduledMessageCount: this.message_scheduler.messages.length,
+      activeMessageCount: 0,
+      transferDeadLetterMessageCount: 0,
+    }
+  }
+
+  private enqueue(
+    _message: M,
+    force_reallocation = false,
+  ): ScheduledMessage<M>[] {
+    // TODO: determine why this works this way (discovered in
+    // src/test/parity/service-bus/subscription/scheduled.test.ts)
+    const message = this.sequence_number_factory.bindToMessage(
+      _message,
+      force_reallocation,
+    )
+
+    message.message_annotations[Constants.enqueueSequenceNumber] =
+      message.message_annotations[Constants.sequenceNumber]
+
+    // @ts-expect-error This will be repopulated by scheduleMessages
+    delete message.message_annotations[Constants.sequenceNumber]
+
+    this.logger?.debug(
+      {
+        message_id: message.message_id,
+        num_subscriptions: this.subscriptions.length,
+        message_annotations: message.message_annotations,
+      },
+      "Enqueueing message to subscriptions",
+    )
+
+    return this.subscriptions.flatMap((sub) =>
+      sub.get(undefined).scheduleMessages(structuredClone(message)),
+    )
+  }
+
+  scheduleMessages(...sourceMessages: M[]): ScheduledMessage<M>[] {
+    this.propagateAccess()
+
+    return sourceMessages.flatMap((message) => {
+      const boundMessage = this.sequence_number_factory.bindToMessage(message)
+
+      const scheduled_enqueued_time = message.message_annotations?.[
+        Constants.scheduledEnqueueTime
+      ] as Date | undefined
+
+      if (
+        scheduled_enqueued_time &&
+        scheduled_enqueued_time.getTime() > Date.now()
+      ) {
+        return [
+          this.message_scheduler.scheduleMessage(
+            // TODO: does this need to get reallocated?
+            boundMessage,
+            scheduled_enqueued_time,
+          ),
+        ]
+      } else {
+        return this.enqueue(boundMessage)
+      }
+    })
+  }
+
+  close() {
+    this.store.sb_subscription.unregisterTrigger(this.subscription_trigger_fn)
+  }
+
+  getSubscription(subscriptionId: string) {
+    this.propagateAccess()
+    return this.subscriptions.find((s) => s.queue_id === subscriptionId)
+  }
+
+  onSubscriptionChange() {
+    this.refreshSubscriptions()
+  }
+
+  cancelScheduledMessage(sequence_number: Long): boolean {
+    return this.message_scheduler.cancelMessage(sequence_number)
   }
 }

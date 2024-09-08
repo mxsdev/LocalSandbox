@@ -19,7 +19,7 @@ beforeAll(async () => {
 
   testServiceBusPort = await getPort()
   azure_service_bus_broker.port = testServiceBusPort
-  azure_service_bus_broker.logger = getTestLogger("amqp")
+  // azure_service_bus_broker.logger = getTestLogger("amqp")
   await azure_service_bus_broker.open()
 })
 

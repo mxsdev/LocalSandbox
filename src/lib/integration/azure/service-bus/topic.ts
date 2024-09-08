@@ -1,12 +1,12 @@
 import { NotFoundError } from "edgespec/middleware/http-exceptions.js"
-import queueRoutes from "../../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/Queue.js"
+import topicRoutes from "../../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/topics.js"
 import { extractRoute } from "../../../openapi/extract-route.js"
 import { azure_routes } from "../routes.js"
 
 azure_routes.implementRoute(
   ...extractRoute(
-    queueRoutes,
-    "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.ServiceBus/namespaces/[namespaceName]/queues/[queueName]",
+    topicRoutes,
+    "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.ServiceBus/namespaces/[namespaceName]/topics/[topicName]",
     "PUT",
   ),
   async (req, ctx) => {
@@ -30,13 +30,13 @@ azure_routes.implementRoute(
       .where((ns) => ns.name === req.routeParams.namespaceName)
       .executeTakeFirstOrThrow(() => new NotFoundError("Namespace not found"))
 
-    const queue = ctx.store.sb_queue
+    const topic = ctx.store.sb_topic
       .insert()
       .values({
         ...parameters,
         location: namespace.location,
         sb_namespace_id: namespace.id,
-        name: req.routeParams.queueName,
+        name: req.routeParams.topicName,
         properties: {
           ...parameters.properties,
           // TODO: automate this
@@ -51,14 +51,14 @@ azure_routes.implementRoute(
       .onAllConflictMerge()
       .executeTakeFirstOrThrow()
 
-    return ctx.json(queue)
+    return ctx.json(topic)
   },
 )
 
 azure_routes.implementRoute(
   ...extractRoute(
-    queueRoutes,
-    "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.ServiceBus/namespaces/[namespaceName]/queues/[queueName]",
+    topicRoutes,
+    "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.ServiceBus/namespaces/[namespaceName]/topics/[topicName]",
     "GET",
   ),
   async (req, ctx) => {
@@ -80,24 +80,22 @@ azure_routes.implementRoute(
       .where((ns) => ns.name === req.routeParams.namespaceName)
       .executeTakeFirstOrThrow(() => new NotFoundError("Namespace not found"))
 
-    const queue = ctx.store.sb_queue
+    const queue = ctx.store.sb_topic
       .select()
       .where((q) => q.sb_namespace().id === namespace.id)
-      .where((q) => q.name === req.routeParams.queueName)
+      .where((q) => q.name === req.routeParams.topicName)
       .executeTakeFirstOrThrow(() => new NotFoundError("Queue not found"))
 
-    const messageCount =
-      ctx.azure_service_bus_broker?.messageSourceMessageCount(queue.id)
-
-    const messageCountDetails =
-      ctx.azure_service_bus_broker?.messageSourceMessageCountDetails(queue.id)
+    const countDetails =
+      ctx.azure_service_bus_broker?.messageDestinationMessageCountDetails(
+        queue.id,
+      )
 
     return ctx.json({
       ...queue,
       properties: {
         ...queue.properties,
-        messageCount,
-        countDetails: messageCountDetails,
+        countDetails,
       },
     })
   },
