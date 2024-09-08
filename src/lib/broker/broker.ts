@@ -264,8 +264,11 @@ export class AzureServiceBusBroker extends BrokerServer {
                   [Constants.dispositionStatus]: z.enum([
                     "completed",
                     "abandoned",
+                    "suspended",
                     // TODO: dead lettered?
                   ]),
+                  [Constants.deadLetterReason]: z.string().optional(),
+                  [Constants.deadLetterDescription]: z.string().optional(),
                 }),
               }),
               z.object({
@@ -473,6 +476,8 @@ export class AzureServiceBusBroker extends BrokerServer {
                   body: {
                     [Constants.lockTokens]: lockTokens,
                     [Constants.dispositionStatus]: dispositionStatus,
+                    [Constants.deadLetterReason]: deadLetterReason,
+                    [Constants.deadLetterDescription]: deadLetterDescription,
                   },
                   associatedLinkName,
                 } = parsed.data
@@ -483,6 +488,10 @@ export class AzureServiceBusBroker extends BrokerServer {
                     { name: associatedLinkName },
                     { tag },
                     dispositionStatus,
+                    {
+                      deadLetterReason,
+                      deadLetterDescription,
+                    },
                   )
                 })
 

@@ -1,7 +1,6 @@
 import rhea, { message } from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
 import { Delivery, Message, Sender, SenderEvents } from "rhea"
-import { Deque } from "@datastructures-js/deque"
 import { Logger, P } from "pino"
 import { Constants } from "@azure/core-amqp"
 import Long from "long"
@@ -31,10 +30,18 @@ import {
   getTopicFromStoreOrThrow,
   populateMessageWithDefaultExpiryTime,
 } from "./util.js"
+import {
+  MinPriorityQueue,
+  PriorityQueue,
+} from "@datastructures-js/priority-queue"
+import {
+  parseRheaMessage,
+  parseRheaMessageBody,
+} from "../amqp/parse-message.js"
 
-interface QueueConsumerDeliveryInfo<M> {
+interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
   delivery: Delivery
-  message: M
+  message: ScheduledMessage<M>
 }
 
 type MessageWithProperties<Base extends Message, MessageAnnotations> = Base & {
@@ -174,7 +181,7 @@ class SequenceNumberFactory {
   }
 }
 
-interface MessageConsumer<M> {
+interface MessageConsumer<M extends TaggedMessage> {
   sender: Sender
   current_delivery: DeliveryMap<QueueConsumerDeliveryInfo<M>>
   listeners: Partial<Record<SenderEvents, (...args: any[]) => void>>
@@ -191,11 +198,71 @@ type TaggedMessage = Message & {
 // TODO: include subscription model
 type QueueOrSubscription = QueueModel | SubscriptionModel
 
+type EnqueuedMessage<M extends TaggedMessage> = {
+  message: ScheduledMessage<M>
+  scheduled_at: Date
+}
+
+function compareScheduledMessages<M extends TaggedMessage>(
+  a: Pick<EnqueuedMessage<M>, "message">,
+  b: Pick<EnqueuedMessage<M>, "message">,
+) {
+  return serializedLong
+    .parse(a.message.message_annotations[Constants.sequenceNumber])
+    .compare(
+      serializedLong.parse(
+        b.message.message_annotations[Constants.sequenceNumber],
+      ),
+    )
+}
+
+class MessageConsumers<M extends TaggedMessage> {
+  private _consumers: Record<
+    string,
+    MessageConsumer<M> & { session_id?: string }
+  > = {}
+  private _consumer_by_session: Record<string, MessageConsumer<M>> = {}
+
+  get values() {
+    return Object.values(this._consumers)
+  }
+
+  get(sender: Pick<Sender, "name">) {
+    return this._consumers[sender.name]
+  }
+
+  add(consumer: MessageConsumer<M>, sessionId?: string) {
+    if (sessionId && this._consumer_by_session[sessionId]) {
+      // TODO: use error instance so it can be caught upstack
+      throw new Error("Session already exists")
+    }
+
+    this._consumers[consumer.sender.name] = {
+      ...consumer,
+      session_id: sessionId,
+    }
+    if (sessionId) {
+      this._consumer_by_session[sessionId] = consumer
+    }
+  }
+
+  remove(sender: Pick<Sender, "name">) {
+    const val = this._consumers[sender.name]
+
+    if (val?.session_id) {
+      delete this._consumer_by_session[val.session_id]
+    }
+
+    delete this._consumers[sender.name]
+  }
+}
+
 export abstract class MessageSequence<M extends TaggedMessage> {
-  private _messages = new Deque<{
-    message: ScheduledMessage<M>
-    scheduled_at: Date
-  }>()
+  private _messages = new PriorityQueue<EnqueuedMessage<M>>(
+    compareScheduledMessages,
+  )
+  private _session_messages: Record<string, PriorityQueue<EnqueuedMessage<M>>> =
+    {}
 
   private deferred_messages = new Map<string, ScheduledMessage<M>>()
   private locked_messages = new Map<
@@ -215,7 +282,8 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
   private message_expiration_timeouts: Record<string, NodeJS.Timeout> = {}
 
-  private consumers: Record<string, MessageConsumer<ScheduledMessage<M>>> = {}
+  // private consumers: Record<string, MessageConsumer<ScheduledMessage<M>>> = {}
+  private consumers = new MessageConsumers<M>()
 
   private num_messages_transferred_to_dlq: number = 0
 
@@ -235,27 +303,31 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     return false
   }
 
-  private pushMessage(message: ScheduledMessage<M>, place: "front" | "back") {
+  private pushMessage(message: ScheduledMessage<M>) {
     message.message_annotations[Constants.enqueuedTime] = new Date()
     message.message_annotations[Constants.messageState] ??=
       BrokerConstants.messageState.active
 
-    this._messages[place === "front" ? "pushFront" : "pushBack"]({
+    this._messages.enqueue({
       message,
       scheduled_at: message.message_annotations[Constants.enqueuedTime],
     })
   }
 
   private enqueue(...messages: ScheduledMessage<M>[]) {
-    messages.forEach((message) => this.pushMessage(message, "front"))
+    messages.forEach((message) => this.pushMessage(message))
   }
 
   private enqueueFront(...messages: ScheduledMessage<M>[]) {
-    messages.forEach((message) => this.pushMessage(message, "back"))
+    messages.forEach((message) => this.pushMessage(message))
   }
 
   private dequeue() {
-    return this._messages.popBack()
+    try {
+      return this._messages.dequeue()
+    } catch {
+      return undefined
+    }
   }
 
   private refreshIdleTimeout() {
@@ -391,10 +463,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     this.tryFlush()
   }
 
-  private finishDelivery(
-    consumer: (typeof this.consumers)[number],
-    delivery: Delivery,
-  ) {
+  private finishDelivery(consumer: MessageConsumer<M>, delivery: Delivery) {
     consumer.current_delivery["finish"](delivery)
 
     if (
@@ -405,7 +474,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         { sender: consumer.sender.name },
         "Deleting consumer since all deliveries are completed",
       )
-      delete this.consumers[consumer.sender.name]
+      this.consumers.remove(consumer.sender)
     }
 
     this.refreshIdleTimeout()
@@ -423,7 +492,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
     this.logger?.debug({ messages: this._messages.size() }, "Flushing messages")
 
-    for (const consumer of Object.values(this.consumers).filter(
+    for (const consumer of this.consumers.values.filter(
       (consumer) =>
         consumer.sender.sendable() &&
         consumer.sender.is_open() &&
@@ -675,7 +744,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   renewLock(sender: SenderName, delivery_tag: DeliveryTag) {
-    const consumer = this.consumers[sender.name]
+    const consumer = this.consumers.get(sender)
     if (!consumer) {
       this.logger?.error(
         { sender: sender.name, consumer_ids: Object.keys(this.consumers) },
@@ -723,9 +792,13 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   updateConsumerDisposition(
     sender: SenderName,
     delivery_tag: DeliveryTag,
-    disposition: "completed" | "abandoned" | "rejected",
+    disposition: "completed" | "abandoned" | "rejected" | "suspended",
+    args?: {
+      deadLetterReason?: string
+      deadLetterDescription?: string
+    },
   ) {
-    const consumer = this.consumers[sender.name]
+    const consumer = this.consumers.get(sender)
     if (!consumer) {
       this.logger?.error(
         { sender: sender.name, consumer_ids: Object.keys(this.consumers) },
@@ -806,17 +879,25 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         }
         break
 
+      // TODO: figure out the difference between suspended and rejected
+      case "suspended":
       case "rejected":
         {
           const error = delivery.remote_state?.["error"]
 
-          if (error?.condition === Constants.deadLetterName) {
+          if (
+            error?.condition === Constants.deadLetterName ||
+            args?.deadLetterReason ||
+            args?.deadLetterDescription
+          ) {
             message.application_properties ??= {}
             message.application_properties[BrokerConstants.deadLetterReason] =
-              error.info["DeadLetterReason"]
+              args?.deadLetterReason ?? error.info["DeadLetterReason"]
             message.application_properties[
               BrokerConstants.deadLetterDescription
-            ] = error.info["DeadLetterErrorDescription"]
+            ] =
+              args?.deadLetterDescription ??
+              error.info["DeadLetterErrorDescription"]
           }
 
           this.finishDelivery(consumer, delivery)
@@ -896,12 +977,13 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
     Object.entries(listeners).forEach((args) => sender.addListener(...args))
 
-    this.consumers[sender.name] = {
+    this.consumers.add({
       sender,
       listeners,
       current_delivery: new DeliveryMap(this.logger),
       schedule_for_deletion: false,
-    }
+    })
+
     this.tryFlush()
 
     this.propagateAccess()
@@ -910,7 +992,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   removeConsumer(sender: Sender) {
     this.logger?.debug({ sender: sender.name }, "Removing sender")
 
-    const consumer = this.consumers[sender.name]
+    const consumer = this.consumers.get(sender)
 
     if (!consumer) {
       this.logger?.warn({ sender: sender.name }, "Could not find consumer")
@@ -926,7 +1008,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         { sender: consumer.sender.name },
         "Removing consumer from queue",
       )
-      delete this.consumers[sender.name]
+      this.consumers.remove(sender)
     } else {
       this.logger?.debug(
         { sender: consumer.sender.name },
