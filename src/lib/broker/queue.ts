@@ -100,6 +100,10 @@ class MessageScheduler<M extends Message> {
 class DeliveryMap<T> {
   private _deliveries: Record<string, T> = {}
 
+  get deliveries() {
+    return Object.values(this._deliveries)
+  }
+
   get length() {
     return Object.keys(this._deliveries).length
   }
@@ -417,16 +421,16 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     this.refreshIdleTimeout()
     this.propagateAccess()
 
-    while (
-      (consumer = Object.values(this.consumers).find(
-        (consumer) =>
-          consumer.sender.sendable() &&
-          consumer.sender.is_open() &&
-          consumer.sender.is_remote_open() &&
-          (!this.fifo || this.locked_messages.size === 0) &&
-          this._messages.size() > 0,
-      ))
-    ) {
+    this.logger?.debug({ messages: this._messages.size() }, "Flushing messages")
+
+    for (const consumer of Object.values(this.consumers).filter(
+      (consumer) =>
+        consumer.sender.sendable() &&
+        consumer.sender.is_open() &&
+        consumer.sender.is_remote_open() &&
+        (!this.fifo || this.locked_messages.size === 0) &&
+        this._messages.size() > 0,
+    )) {
       const { message } = this.dequeue()!
 
       // check expired
@@ -844,6 +848,18 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       [SenderEvents.sendable]: (e: any) => {
         this.logger?.debug("sender is sendable")
         this.tryFlush()
+      },
+      [SenderEvents.senderDraining]: (e: any) => {
+        this.logger?.debug("sender is draining")
+        // this.tryFlush()
+      },
+      [SenderEvents.senderClose]: (e: any) => {
+        this.logger?.debug("sender is closed")
+        // this.tryFlush()
+      },
+      [SenderEvents.senderFlow]: (e: any) => {
+        this.logger?.debug("sender in flow")
+        // this.tryFlush()
       },
       [SenderEvents.accepted]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug("sender accepted message")
