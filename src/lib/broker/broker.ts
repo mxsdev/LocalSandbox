@@ -26,6 +26,7 @@ import {
   isQualifiedTopicId,
   isQualifiedMessageSourceId,
   isQualifiedMessageDestinationId,
+  isQualifiedQueueId,
 } from "./util.js"
 import { Constants } from "@azure/core-amqp"
 import { Deque } from "@datastructures-js/deque"
@@ -315,6 +316,12 @@ export class AzureServiceBusBroker extends BrokerServer {
           ) {
             const sequenceNumber = parsed.data.body[Constants.sequenceNumber]
 
+            if (!isQualifiedQueueId(queue)) {
+              throw new Error(
+                "Cannot set sequence number on non-queue (unimplemented)",
+              )
+            }
+
             this.logger?.info(
               `Setting broker sequence number to ${sequenceNumber.toString()}`,
             )
@@ -419,6 +426,7 @@ export class AzureServiceBusBroker extends BrokerServer {
                   respondSuccess(consumer, {
                     messages: [],
                   })
+                  return
                 }
 
                 const peekedMessages =

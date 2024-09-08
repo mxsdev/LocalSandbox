@@ -47,6 +47,55 @@ type MessageWithSequenceNumber<Base extends Message> = MessageWithProperties<
   }
 >
 
+class MessageScheduler<M extends Message> {
+  private scheduled_messages: Record<
+    string,
+    { timeout: NodeJS.Timeout; message: ScheduledMessage<M> }
+  > = {}
+
+  constructor(private sendMessage: (message: ScheduledMessage<M>) => void) {}
+
+  get messages() {
+    return Object.values(this.scheduled_messages).map(({ message }) => message)
+  }
+
+  scheduleMessage(message: ScheduledMessage<M>, scheduled_enqueued_time: Date) {
+    const message_sequence_number_id = serializedLong
+      .parse(message.message_annotations[Constants.sequenceNumber])
+      .toString()
+
+    message.message_annotations[Constants.messageState] =
+      BrokerConstants.messageState.scheduled
+
+    this.scheduled_messages[message_sequence_number_id] = {
+      timeout: setTimeout(() => {
+        delete this.scheduled_messages[message_sequence_number_id]
+        this.sendMessage(message)
+      }, scheduled_enqueued_time.getTime() - Date.now()),
+      message,
+    }
+
+    return message
+  }
+
+  cancelMessage(sequence_number: Long) {
+    const existing_timeout = this.scheduled_messages[sequence_number.toString()]
+
+    if (!existing_timeout) {
+      return false
+    }
+
+    clearTimeout(existing_timeout.timeout)
+    return true
+  }
+
+  close() {
+    Object.values(this.scheduled_messages).forEach(({ timeout }) =>
+      clearTimeout(timeout),
+    )
+  }
+}
+
 class DeliveryMap<T> {
   private _deliveries: Record<string, T> = {}
 
@@ -89,9 +138,11 @@ class DeliveryMap<T> {
 }
 
 class SequenceNumberFactory {
-  private next_sequence_number = new Long(1)
+  constructor(private initial_sequence_number = new Long(1)) {}
 
-  protected allocateNextSequenceNumber() {
+  private next_sequence_number = this.initial_sequence_number
+
+  allocateNextSequenceNumber() {
     const sequence_number = this.next_sequence_number
     this.next_sequence_number = this.next_sequence_number.add(1)
     return sequence_number
@@ -144,10 +195,12 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       lock_duration_ms: number
     }
   >()
-  private scheduled_messages: Record<
-    string,
-    { timeout: NodeJS.Timeout; message: ScheduledMessage<M> }
-  > = {}
+  private message_scheduler = new MessageScheduler<ScheduledMessage<M>>(
+    (message) => {
+      this.enqueue(message)
+      this.tryFlush()
+    },
+  )
 
   private message_expiration_timeouts: Record<string, NodeJS.Timeout> = {}
 
@@ -314,9 +367,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         ? [...this.locked_messages.values()].map(({ message }) => message)
         : []),
       ...[...this.deferred_messages.values()],
-      ...[...Object.values(this.scheduled_messages)].map(
-        ({ message }) => message,
-      ),
+      ...this.message_scheduler.messages,
     ].filter(
       (m) =>
         !m.absolute_expiry_time ||
@@ -434,7 +485,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     }
   }
 
-  scheduleMessages(...sourceMessages: M[]) {
+  scheduleMessages(...sourceMessages: M[]): ScheduledMessage<M>[] {
     const messages = sourceMessages.map((msg) =>
       this.sequence_number_factory.bindToMessage(msg),
     )
@@ -505,38 +556,42 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         )
       }
 
-      if (
-        scheduled_enqueued_time &&
-        !(scheduled_enqueued_time instanceof Date)
-      ) {
-        throw new Error(
-          `Expected ${Constants.scheduledEnqueueTime} to be parsed as JS Date instance`,
-        )
-      }
+      if (this.queue_type === "sb_queue") {
+        if (
+          scheduled_enqueued_time &&
+          !(scheduled_enqueued_time instanceof Date)
+        ) {
+          throw new Error(
+            `Expected ${Constants.scheduledEnqueueTime} to be parsed as JS Date instance`,
+          )
+        }
 
-      if (
-        scheduled_enqueued_time &&
-        scheduled_enqueued_time.getTime() > Date.now()
-      ) {
-        const message_sequence_number_id = serializedLong
-          .parse(message.message_annotations[Constants.sequenceNumber])
-          .toString()
-
-        message.message_annotations[Constants.messageState] =
-          BrokerConstants.messageState.scheduled
-
-        this.scheduled_messages[message_sequence_number_id] = {
-          timeout: setTimeout(() => {
-            delete this.scheduled_messages[message_sequence_number_id]
-            this.enqueue(message)
-            this.tryFlush()
-          }, scheduled_enqueued_time.getTime() - Date.now()),
-          message,
+        if (
+          scheduled_enqueued_time &&
+          scheduled_enqueued_time.getTime() > Date.now()
+        ) {
+          this.message_scheduler.scheduleMessage(
+            message,
+            scheduled_enqueued_time,
+          )
+        } else {
+          messages_for_immediate_delivery.push(message)
         }
       } else {
         messages_for_immediate_delivery.push(message)
       }
     }
+
+    this.logger?.debug(
+      {
+        requiresDuplicateDetection,
+        duplicateDetectionMs,
+        messages: messages.length,
+        queue: this.queue_or_subscription_id,
+        messages_for_immediate_delivery: messages_for_immediate_delivery.length,
+      },
+      "Scheduling messages",
+    )
 
     this.enqueue(...messages_for_immediate_delivery)
     this.tryFlush()
@@ -598,15 +653,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
   cancelScheduledMessage(sequence_number: Long): boolean {
     this.refreshIdleTimeout()
-
-    const existing_timeout = this.scheduled_messages[sequence_number.toString()]
-
-    if (!existing_timeout) {
-      return false
-    }
-
-    clearTimeout(existing_timeout.timeout)
-    return true
+    return this.message_scheduler.cancelMessage(sequence_number)
   }
 
   renewLock(sender: SenderName, delivery_tag: DeliveryTag) {
@@ -868,9 +915,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   close() {
-    Object.values(this.scheduled_messages).forEach(({ timeout }) =>
-      clearTimeout(timeout),
-    )
+    this.message_scheduler.close()
     Object.values(this.message_expiration_timeouts).forEach(clearTimeout)
 
     Object.values(this.locked_messages).forEach(({ timeout }) =>
@@ -986,9 +1031,32 @@ export class BrokerTopic<M extends TaggedMessage> {
     return getTopicFromStoreOrThrow(this.topic_id, this.store, this.logger)
   }
 
-  private sequence_number_factory = new SequenceNumberFactory()
-
   private subscription_trigger_fn: any
+
+  private sequence_number_factory = new SequenceNumberFactory(new Long(1))
+
+  private message_scheduler = new MessageScheduler<M>((message) => {
+    this.logger?.debug(
+      {
+        message_id: message.message_id,
+        num_subscriptions: this.subscriptions.length,
+      },
+      "Enqueueing scheduled message",
+    )
+
+    // TODO: determine why this works this way (discovered in
+    // src/test/parity/service-bus/subscription/scheduled.test.ts)
+    message.message_annotations[Constants.enqueueSequenceNumber] =
+      unserializedLongToBufferLike.parse(
+        this.sequence_number_factory.allocateNextSequenceNumber(),
+      )
+
+    // @ts-expect-error This property is not needed for sendMessagesToQueue below
+    delete message.message_annotations[Constants.sequenceNumber]
+
+    this.enqueue(message)
+    this.propagateAccess()
+  })
 
   constructor(
     protected store: BrokerStore,
@@ -1070,19 +1138,41 @@ export class BrokerTopic<M extends TaggedMessage> {
 
   get messageCountDetails(): MessageCountDetails {
     return {
+      scheduledMessageCount: this.message_scheduler.messages.length,
       activeMessageCount: 0,
       transferDeadLetterMessageCount: 0,
     }
   }
 
-  scheduleMessages(...sourceMessages: M[]) {
+  private enqueue(message: M): ScheduledMessage<M>[] {
+    return this.subscriptions.flatMap((sub) =>
+      sub.get(undefined).scheduleMessages(structuredClone(message)),
+    )
+  }
+
+  scheduleMessages(...sourceMessages: M[]): ScheduledMessage<M>[] {
     this.propagateAccess()
 
-    return this.subscriptions.flatMap((sub) =>
-      sub
-        .get(undefined)
-        .scheduleMessages(...sourceMessages.map((m) => structuredClone(m))),
-    )
+    return sourceMessages.flatMap((message) => {
+      const scheduled_enqueued_time = message.message_annotations?.[
+        Constants.scheduledEnqueueTime
+      ] as Date | undefined
+
+      if (
+        scheduled_enqueued_time &&
+        scheduled_enqueued_time.getTime() > Date.now()
+      ) {
+        return [
+          this.message_scheduler.scheduleMessage(
+            // TODO: does this need to get reallocated?
+            this.sequence_number_factory.bindToMessage(message),
+            scheduled_enqueued_time,
+          ),
+        ]
+      } else {
+        return this.enqueue(message)
+      }
+    })
   }
 
   close() {
@@ -1099,9 +1189,6 @@ export class BrokerTopic<M extends TaggedMessage> {
   }
 
   cancelScheduledMessage(sequence_number: Long): boolean {
-    return this.subscriptions.some((s) =>
-      // TODO: can i do this on a subqueue?
-      s.get(undefined).cancelScheduledMessage(sequence_number),
-    )
+    return this.message_scheduler.cancelMessage(sequence_number)
   }
 }
