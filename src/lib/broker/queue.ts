@@ -1,4 +1,4 @@
-import rhea from "rhea"
+import rhea, { message } from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
 import { Delivery, Message, Sender, SenderEvents } from "rhea"
 import { Deque } from "@datastructures-js/deque"
@@ -148,10 +148,16 @@ class SequenceNumberFactory {
     return sequence_number
   }
 
-  bindToMessage<M extends Message>(msg: M) {
+  bindToMessage<M extends Message>(msg: M, force_reallocation = false) {
     msg.message_annotations ??= {}
-    msg.message_annotations[Constants.sequenceNumber] ??=
-      unserializedLongToBufferLike.parse(this.allocateNextSequenceNumber())
+
+    if (force_reallocation) {
+      msg.message_annotations[Constants.sequenceNumber] =
+        unserializedLongToBufferLike.parse(this.allocateNextSequenceNumber())
+    } else {
+      msg.message_annotations[Constants.sequenceNumber] ??=
+        unserializedLongToBufferLike.parse(this.allocateNextSequenceNumber())
+    }
 
     return msg as typeof msg & {
       message_annotations: {
@@ -1044,17 +1050,7 @@ export class BrokerTopic<M extends TaggedMessage> {
       "Enqueueing scheduled message",
     )
 
-    // TODO: determine why this works this way (discovered in
-    // src/test/parity/service-bus/subscription/scheduled.test.ts)
-    message.message_annotations[Constants.enqueueSequenceNumber] =
-      unserializedLongToBufferLike.parse(
-        this.sequence_number_factory.allocateNextSequenceNumber(),
-      )
-
-    // @ts-expect-error This property is not needed for sendMessagesToQueue below
-    delete message.message_annotations[Constants.sequenceNumber]
-
-    this.enqueue(message)
+    this.enqueue(message, true)
     this.propagateAccess()
   })
 
@@ -1144,7 +1140,32 @@ export class BrokerTopic<M extends TaggedMessage> {
     }
   }
 
-  private enqueue(message: M): ScheduledMessage<M>[] {
+  private enqueue(
+    _message: M,
+    force_reallocation = false,
+  ): ScheduledMessage<M>[] {
+    // TODO: determine why this works this way (discovered in
+    // src/test/parity/service-bus/subscription/scheduled.test.ts)
+    const message = this.sequence_number_factory.bindToMessage(
+      _message,
+      force_reallocation,
+    )
+
+    message.message_annotations[Constants.enqueueSequenceNumber] =
+      message.message_annotations[Constants.sequenceNumber]
+
+    // @ts-expect-error This will be repopulated by scheduleMessages
+    delete message.message_annotations[Constants.sequenceNumber]
+
+    this.logger?.debug(
+      {
+        message_id: message.message_id,
+        num_subscriptions: this.subscriptions.length,
+        message_annotations: message.message_annotations,
+      },
+      "Enqueueing message to subscriptions",
+    )
+
     return this.subscriptions.flatMap((sub) =>
       sub.get(undefined).scheduleMessages(structuredClone(message)),
     )
@@ -1154,6 +1175,8 @@ export class BrokerTopic<M extends TaggedMessage> {
     this.propagateAccess()
 
     return sourceMessages.flatMap((message) => {
+      const boundMessage = this.sequence_number_factory.bindToMessage(message)
+
       const scheduled_enqueued_time = message.message_annotations?.[
         Constants.scheduledEnqueueTime
       ] as Date | undefined
@@ -1165,12 +1188,12 @@ export class BrokerTopic<M extends TaggedMessage> {
         return [
           this.message_scheduler.scheduleMessage(
             // TODO: does this need to get reallocated?
-            this.sequence_number_factory.bindToMessage(message),
+            boundMessage,
             scheduled_enqueued_time,
           ),
         ]
       } else {
-        return this.enqueue(message)
+        return this.enqueue(boundMessage)
       }
     })
   }

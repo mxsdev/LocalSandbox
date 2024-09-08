@@ -1,7 +1,7 @@
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
-  "can complete single message from queue",
+  "can complete single message from subscription",
   async ({ azure_queue, expect }) => {
     const { createSender, createReceiver, createTopic, createSubscription } =
       azure_queue
@@ -25,6 +25,7 @@ fixturedTest(
 
       expect(message!.body).toBe("hello world!")
       expect(message!.sequenceNumber!.toNumber()).toBe(1)
+      expect(message!.enqueuedSequenceNumber!).toBe(1)
 
       await receiver.completeMessage(message!)
     }
@@ -38,6 +39,7 @@ fixturedTest(
 
       expect(message!.body).toBe("hello world!")
       expect(message!.sequenceNumber!.toNumber()).toBe(1)
+      expect(message!.enqueuedSequenceNumber!).toBe(1)
 
       await receiver.completeMessage(message!)
     }
@@ -57,6 +59,7 @@ fixturedTest(
 
       expect(message!.body).toBe("hello world!")
       expect(message!.sequenceNumber!.toNumber()).toBe(1)
+      expect(message!.enqueuedSequenceNumber!).toBe(2)
 
       await receiver.completeMessage(message!)
     }

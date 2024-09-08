@@ -161,6 +161,7 @@ export class AzureServiceBusBroker extends BrokerServer {
           resource_group_name,
           subscription_id,
           subqueue,
+          subscription_name,
         } = parseBrokerURL(sb_connection_url)
 
         // ensure queue exists
@@ -171,15 +172,14 @@ export class AzureServiceBusBroker extends BrokerServer {
               namespace_name,
               subscription_id,
               queue_or_topic_name,
-              subscription_name:
-                subqueue?.type === "subscription" ? subqueue.name : undefined,
+              subscription_name,
             },
             this.store,
             this.logger,
           )
 
         if (
-          subqueue?.type === "deadletter" &&
+          subqueue === "deadletter" &&
           queue_or_topic_or_subscription.properties &&
           "forwardDeadLetteredMessagesTo" in
             queue_or_topic_or_subscription.properties &&
@@ -199,7 +199,7 @@ export class AzureServiceBusBroker extends BrokerServer {
 
         this.completeHandshake(connection, {
           ...queueId,
-          subqueue: subqueue?.type === "deadletter" ? "deadletter" : undefined,
+          subqueue,
         })
 
         this.logger?.info(

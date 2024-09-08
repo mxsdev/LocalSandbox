@@ -8,7 +8,6 @@ test("can parse queue or topic URL", ({ expect }) => {
       "namespace_name": "namespace",
       "queue_or_topic_name": "queue-or-topic",
       "resource_group_name": "rg",
-      "subqueue": undefined,
       "subscription_id": "subscription",
     }
   `)
@@ -23,11 +22,8 @@ test("can parse subscription URL", ({ expect }) => {
       "namespace_name": "namespace",
       "queue_or_topic_name": "queue-or-topic",
       "resource_group_name": "rg",
-      "subqueue": {
-        "name": "subscription",
-        "type": "subscription",
-      },
       "subscription_id": "subscription",
+      "subscription_name": "subscription",
     }
   `)
 })
@@ -41,9 +37,7 @@ test("can parse queue w/ deadletter URL", ({ expect }) => {
       "namespace_name": "namespace",
       "queue_or_topic_name": "queue-or-topic",
       "resource_group_name": "rg",
-      "subqueue": {
-        "type": "deadletter",
-      },
+      "subqueue": "deadletter",
       "subscription_id": "subscription",
     }
   `)
@@ -59,7 +53,6 @@ test("can parse queue w/ management url", ({ expect }) => {
       "namespace_name": "namespace",
       "queue_or_topic_name": "queue-or-topic",
       "resource_group_name": "rg",
-      "subqueue": undefined,
       "subscription_id": "subscription",
     }
   `)
@@ -75,11 +68,24 @@ test("can parse subscription w/ management url", ({ expect }) => {
       "namespace_name": "namespace",
       "queue_or_topic_name": "topic",
       "resource_group_name": "rg",
-      "subqueue": {
-        "name": "subscription",
-        "type": "subscription",
-      },
       "subscription_id": "subscription",
+      "subscription_name": "subscription",
+    }
+  `)
+})
+
+test("can parse subscription w/ DLQ", ({ expect }) => {
+  const url = new URL(
+    "sb://localhost/subscription/rg/namespace/topic/Subscriptions/subscription/$DeadLetterQueue",
+  )
+  expect(parseBrokerURL(url)).toMatchInlineSnapshot(`
+    {
+      "namespace_name": "namespace",
+      "queue_or_topic_name": "topic",
+      "resource_group_name": "rg",
+      "subqueue": "deadletter",
+      "subscription_id": "subscription",
+      "subscription_name": "subscription",
     }
   `)
 })
