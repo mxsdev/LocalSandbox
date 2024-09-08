@@ -79,11 +79,11 @@ export class BrokerConsumerBalancer {
   }
 
   renewLock(
-    queueId: QualifiedQueueIdWithSubqueueType,
+    queueId: QualifiedMessageSourceId,
     ...args: Parameters<MessageSequence<any>["renewLock"]>
   ) {
-    const queue = this.getQueueFromStoreOrThrow(queueId)
-    const broker_queue = this.getOrCreate(queue.id, queueId.subqueue)
+    const queue = this.getMessageSourceFromStoreOrThrow(queueId)
+    const broker_queue = this.getOrCreateMessageSource(queue, queueId.subqueue)
     return broker_queue.renewLock(...args)
   }
 

@@ -491,6 +491,10 @@ export class AzureServiceBusBroker extends BrokerServer {
 
             case Constants.operations.renewLock:
               {
+                if (!isQualifiedMessageSourceId(queue)) {
+                  throw new Error("Cannot send message to destination")
+                }
+
                 const {
                   body: { [Constants.lockTokens]: lockTokens },
                   associatedLinkName,
