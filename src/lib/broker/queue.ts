@@ -443,15 +443,20 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
     const queue = this.queue
 
-    for (const message of messages) {
-      if (
-        "requiresDuplicateDetection" in queue.properties &&
-        queue.properties.requiresDuplicateDetection
-      ) {
-        const duplicateDetectionMs = Temporal.Duration.from(
-          queue.properties.duplicateDetectionHistoryTimeWindow,
-        ).total("milliseconds")
+    const requiresDuplicateDetection =
+      queue._model === "sb_queue"
+        ? "requiresDuplicateDetection" in queue.properties &&
+          !!queue.properties.requiresDuplicateDetection
+        : !!queue.sb_topic().properties.requiresDuplicateDetection
 
+    const duplicateDetectionMs = Temporal.Duration.from(
+      queue._model === "sb_queue"
+        ? queue.properties.duplicateDetectionHistoryTimeWindow
+        : queue.sb_topic().properties.duplicateDetectionHistoryTimeWindow,
+    ).total("milliseconds")
+
+    for (const message of messages) {
+      if (requiresDuplicateDetection) {
         if (
           this._messages
             .toArray()
