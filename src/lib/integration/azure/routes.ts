@@ -133,9 +133,9 @@ export const azure_routes = createIntegration({
     passErrors: true,
   },
   triggers: {
-    change(args) {
-      // TODO: support topics, subscriptions too
-      if (args.model === "sb_queue") {
+    sb_queue: {
+      change(args) {
+        // TODO: support topics, subscriptions too
         if (args.new_val?.autoDeleteTimeout) {
           args.new_val.autoDeleteTimeout.refresh()
         }
@@ -164,7 +164,7 @@ export const azure_routes = createIntegration({
             })
             .execute()
         }
-      }
+      },
     },
   },
   models: createModelSpecs({

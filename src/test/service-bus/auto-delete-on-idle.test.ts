@@ -27,7 +27,7 @@ fixturedTest(
       sb_management_client.queues.get(rg_name, namespace_name, queue.name!),
     ).resolves.not.toThrow()
 
-    await delay(100)
+    await delay(150)
 
     await expect(
       sb_management_client.queues.get(rg_name, namespace_name, queue.name!),

@@ -591,7 +591,7 @@ export const getStore = <const MS extends ModelSpecs<any>>(modelSpecs: MS) => {
 interface IntegrationSpec<MS extends ModelSpecs<any>, GS extends GlobalSpec> {
   globalSpec: GS
   models: MS
-  triggers?: ModelTriggers<MS>
+  triggers?: Partial<{ [K in keyof MS & string]: ModelTriggers<MS, K> }>
 }
 
 export function createIntegration<
@@ -601,6 +601,12 @@ export function createIntegration<
   const { models: modelSpecs, globalSpec } = integrationSpec
 
   const models = getStore(modelSpecs)
+
+  for (const [modelName, trigger] of Object.entries(
+    integrationSpec.triggers ?? {},
+  )) {
+    models[modelName]!.registerTrigger(trigger)
+  }
 
   const storeMiddleware: Middleware<{}, { store: Store<MS> }> = async (
     req,
