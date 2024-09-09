@@ -48,6 +48,7 @@ import {
   SubqueueType,
 } from "./types.js"
 import { parseBrokerURL } from "./url.js"
+import { SessionLockedError } from "./errors.js"
 
 type ConnectionQueueLinkId =
   | QualifiedMessageDestinationId

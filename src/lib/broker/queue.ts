@@ -40,6 +40,7 @@ import {
   parseRheaMessageBody,
 } from "../amqp/parse-message.js"
 import { c } from "rhea/typings/types.js"
+import { SessionLockedError } from "./errors.js"
 
 interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
   delivery: Delivery
@@ -238,8 +239,7 @@ class MessageConsumers<M extends TaggedMessage> {
     const session_id = consumer.session_id
 
     if (session_id && this._consumer_by_session[session_id]) {
-      // TODO: use error instance so it can be caught upstack
-      throw new Error("Session already exists")
+      throw new SessionLockedError(session_id)
     }
 
     this._consumers[consumer.sender.name] = {
@@ -612,8 +612,13 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     for (const message of messages) {
       if (requiresDuplicateDetection) {
         if (
-          this._messages
-            .toArray()
+          [
+            // TODO: more efficient implementation
+            ...this._messages.toArray(),
+            ...Object.values(this._session_messages).flatMap((q) =>
+              q.toArray(),
+            ),
+          ]
             .filter(
               ({ scheduled_at }) =>
                 Date.now() - scheduled_at.getTime() <= duplicateDetectionMs,
@@ -970,8 +975,9 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         e.sender.set_drained(true)
         // e.session._write_flow(e.sender)
       },
-      [SenderEvents.senderClose]: (e: any) => {
+      [SenderEvents.senderClose]: (e: { sender: Sender }) => {
         this.logger?.debug("sender is closed")
+        this.removeConsumer(e.sender)
         // this.tryFlush()
       },
       [SenderEvents.senderFlow]: (e: any) => {
@@ -1035,6 +1041,15 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         ),
       }
     } catch (e) {
+      if (e instanceof SessionLockedError) {
+        sender.close({
+          condition: "'com.microsoft:session-cannot-be-locked'",
+          description: `The requested session '${e.session_id}' cannot be accepted. It may be locked by another receiver.`,
+        })
+
+        return
+      }
+
       // TODO: filter based on error type
       this.logger?.error(
         { sender: sender.name, sessionId, err: e },
@@ -1080,7 +1095,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   removeConsumers(where: (consumer: Sender) => boolean) {
-    for (const consumer of Object.values(this.consumers)) {
+    for (const consumer of Object.values(this.consumers.values)) {
       if (where(consumer.sender)) {
         this.removeConsumer(consumer.sender)
       }

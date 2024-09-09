@@ -243,7 +243,7 @@ const getAzureContextWithQueueFixtures = async (
     ...args: Parameters<(typeof sb_client)["createSender"]>
   ) => {
     const sender = sb_client.createSender(...args)
-    // onTestFinished(() => sender.close())
+    onTestFinished(() => sender.close())
     return sender
   }
 
@@ -264,7 +264,7 @@ const getAzureContextWithQueueFixtures = async (
     const receiver = await sb_client.acceptSession(
       ...(args as unknown as [any, any]),
     )
-    // onTestFinished(() => receiver.close())
+    onTestFinished(() => receiver.close())
     return receiver
   }
 
