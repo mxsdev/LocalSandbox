@@ -28,7 +28,7 @@ import {
   isQualifiedMessageDestinationId,
   isQualifiedQueueId,
 } from "./util.js"
-import { Constants } from "@azure/core-amqp"
+import { Constants, ErrorNameConditionMapper } from "@azure/core-amqp"
 import { Deque } from "@datastructures-js/deque"
 import { z } from "zod"
 import {
@@ -48,7 +48,7 @@ import {
   SubqueueType,
 } from "./types.js"
 import { parseBrokerURL } from "./url.js"
-import { SessionLockedError } from "./errors.js"
+import { SessionLockedError, SessionRequiredError } from "./errors.js"
 
 type ConnectionQueueLinkId =
   | QualifiedMessageDestinationId
@@ -91,7 +91,6 @@ export class AzureServiceBusBroker extends BrokerServer {
     delivery,
     receiver,
     connection,
-    session,
   }: BrokerMessageEvent): Promise<void> {
     const operation = message.application_properties?.["operation"]
 
@@ -577,13 +576,27 @@ export class AzureServiceBusBroker extends BrokerServer {
             "delivering message batch",
           )
 
-          this.consumer_balancer.sendMessagesToQueue(
-            queue,
-            ...messages_to_enqueue.map((m) => {
-              m["message_id"] ??= generate_uuid()
-              return m as typeof m & { message_id: string }
-            }),
-          )
+          try {
+            this.consumer_balancer.sendMessagesToQueue(
+              queue,
+              ...messages_to_enqueue.map((m) => {
+                m["message_id"] ??= generate_uuid()
+                return m as typeof m & { message_id: string }
+              }),
+            )
+          } catch (err) {
+            if (err instanceof SessionRequiredError) {
+              delivery.reject({
+                condition: ErrorNameConditionMapper.InvalidOperationError,
+                description:
+                  "The SessionId was not set on a message, and it cannot be sent to the entity. Entities that have session support enabled can only receive messages that have the SessionId set to a valid value.",
+              })
+              return
+            }
+
+            throw err
+          }
+
           delivery.accept()
         }
       }
@@ -646,18 +659,6 @@ export class AzureServiceBusBroker extends BrokerServer {
       delete this.cbs_senders[sender.name]
     } else {
       this.consumer_balancer.remove(sender)
-    }
-  }
-
-  private getSessionId(session: Session): string {
-    const res = this.session_id_map.get(session)
-
-    if (res) {
-      return res
-    } else {
-      const id = this.generateUUID()
-      this.session_id_map.set(session, id)
-      return id
     }
   }
 

@@ -40,7 +40,7 @@ import {
   parseRheaMessageBody,
 } from "../amqp/parse-message.js"
 import { c } from "rhea/typings/types.js"
-import { SessionLockedError } from "./errors.js"
+import { SessionLockedError, SessionRequiredError } from "./errors.js"
 
 interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
   delivery: Delivery
@@ -596,6 +596,12 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     const messages_for_immediate_delivery: ScheduledMessage<M>[] = []
 
     const queue = this.queue
+
+    const requiresSession = !!queue.properties.requiresSession
+
+    if (requiresSession && messages.some((m) => !m.group_id)) {
+      throw new SessionRequiredError()
+    }
 
     const requiresDuplicateDetection =
       queue._model === "sb_queue"

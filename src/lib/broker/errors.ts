@@ -4,3 +4,10 @@ export class SessionLockedError extends Error {
     this.name = "SessionLockedError"
   }
 }
+
+export class SessionRequiredError extends Error {
+  constructor() {
+    super("requiresSession must be enabled to use sessions")
+    this.name = "SessionRequiredError"
+  }
+}
