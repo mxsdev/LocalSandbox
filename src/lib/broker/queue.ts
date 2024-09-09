@@ -463,19 +463,30 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     // this.num_messages_transferred_to_dlq++
   }
 
-  private listNonExpiredMessages(args: { include_locked: boolean }) {
+  private listNonExpiredMessages(args: {
+    include_locked: boolean
+    group_id?: string | null
+  }) {
     return [
+      // TODO: more efficient implementation
       ...this._messages.toArray().map(({ message }) => message),
+      ...Object.values(this._session_messages)
+        .flatMap((q) => q.toArray())
+        .map(({ message }) => message),
       ...(args.include_locked
         ? [...this.locked_messages.values()].map(({ message }) => message)
         : []),
       ...[...this.deferred_messages.values()],
       ...this.message_scheduler.messages,
-    ].filter(
-      (m) =>
-        !m.absolute_expiry_time ||
-        new Date(m.absolute_expiry_time) > new Date(),
-    )
+    ]
+      .filter(
+        (m) =>
+          !m.absolute_expiry_time ||
+          new Date(m.absolute_expiry_time) > new Date(),
+      )
+      .filter(
+        (m) => args.group_id === undefined || m.group_id === args.group_id,
+      )
   }
 
   private scheduleMessagesInFront(...message: ScheduledMessage<M>[]) {
@@ -751,11 +762,12 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     }
   }
 
-  peekMessages(messageCount: number) {
+  peekMessages(messageCount: number, session_id: string | undefined) {
     this.refreshIdleTimeout()
 
     const peekable_messages = this.listNonExpiredMessages({
       include_locked: false,
+      group_id: session_id ?? null,
     }).sort(
       (a, b) =>
         serializedLong

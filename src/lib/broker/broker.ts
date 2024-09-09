@@ -249,6 +249,7 @@ export class AzureServiceBusBroker extends BrokerServer {
                 body: z.object({
                   [Constants.fromSequenceNumber]: serializedLong,
                   [Constants.messageCount]: z.number(),
+                  [Constants.sessionIdMapKey]: z.string().optional(),
                 }),
               }),
               z.object({
@@ -424,8 +425,9 @@ export class AzureServiceBusBroker extends BrokerServer {
             case Constants.operations.peekMessage:
               {
                 const {
-                  [Constants.fromSequenceNumber]: sequenceNumber,
+                  [Constants.sessionIdMapKey]: sessionId,
                   // TODO: do we need to correlate w/ sequence number and "replay" certain messages?
+                  [Constants.fromSequenceNumber]: sequenceNumber,
                   [Constants.messageCount]: messageCount,
                 } = parsed.data.body
 
@@ -440,6 +442,7 @@ export class AzureServiceBusBroker extends BrokerServer {
                   this.consumer_balancer.peekMessageFromQueue(
                     queue,
                     messageCount,
+                    sessionId,
                   )
 
                 delivery.accept()

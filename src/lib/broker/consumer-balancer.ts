@@ -115,12 +115,14 @@ export class BrokerConsumerBalancer {
   peekMessageFromQueue(
     queueId: QualifiedMessageSourceId,
     messageCount: number,
+    session_id: string | undefined,
   ) {
     // TODO: handle when queue is deleted more gracefully
     const queue = this.getMessageSourceFromStoreOrThrow(queueId)
 
     return this.getOrCreateMessageSource(queue, queueId.subqueue).peekMessages(
       messageCount,
+      session_id,
     )
   }
 
