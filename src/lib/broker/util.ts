@@ -7,6 +7,7 @@ import {
   QualifiedQueueOrTopicId,
   QualifiedQueueOrTopicOrSubscriptionId,
   QueueModel,
+  QueueOrSubscriptionModel,
   QueueOrTopicModel,
   QueueOrTopicOrSubscriptionModel,
   SubscriptionModel,
@@ -16,37 +17,10 @@ import { Message } from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
 
 export const getQueueOrTopicOrSubscriptionFromStoreOrThrow = (
-  queueId: QualifiedQueueOrTopicOrSubscriptionId | string,
-  store: BrokerStore,
-  logger: Logger | undefined,
-): QueueOrTopicOrSubscriptionModel => {
-  if (typeof queueId === "string" || queueId.subscription_id) {
-    try {
-      return getSubscriptionFromStoreOrThrow(
-        typeof queueId === "string"
-          ? queueId
-          : {
-              ...queueId,
-              topic_name: queueId.queue_or_topic_name,
-              subscription_name: queueId.subscription_name!,
-            },
-        store,
-        logger,
-      )
-    } catch {
-      // TODO: make sure this is an expected error
-    }
-  }
-
-  // TODO: error message should say "queue or topic or subscription"
-  return getMessageDestinationFromStoreOrThrow(queueId, store, logger)
-}
-
-export const getMessageSourceFromStoreOrThrow = (
-  queueId: _QualifiedQueueId | _QualifiedSubscriptionId | string,
-  store: BrokerStore,
-  logger: Logger | undefined,
+  ...args: Parameters<typeof getQueueOrTopicOrSubscriptionFromStore>
 ) => {
+  const [queueId, _, logger] = args
+
   const err = () => {
     logger?.error(
       { ...(typeof queueId === "object" ? queueId : { queueId }) },
@@ -56,42 +30,102 @@ export const getMessageSourceFromStoreOrThrow = (
     return new Error(`Queue or subscription not found`)
   }
 
+  const res = getQueueOrTopicOrSubscriptionFromStore(...args)
+
+  if (!res) {
+    throw err()
+  }
+
+  return res
+}
+
+const getQueueOrTopicOrSubscriptionFromStore = (
+  queueId: QualifiedQueueOrTopicOrSubscriptionId | string,
+  store: BrokerStore,
+  logger: Logger | undefined,
+): QueueOrTopicOrSubscriptionModel | undefined => {
+  if (typeof queueId === "string" || queueId.subscription_id) {
+    const subscription = getSubscriptionFromStore(
+      typeof queueId === "string"
+        ? queueId
+        : {
+            ...queueId,
+            topic_name: queueId.queue_or_topic_name,
+            subscription_name: queueId.subscription_name!,
+          },
+      store,
+      logger,
+    )
+
+    if (subscription) {
+      return subscription
+    }
+  }
+
+  // TODO: error message should say "queue or topic or subscription"
+  return getMessageDestinationFromStore(queueId, store, logger)
+}
+
+export const getMessageSourceFromStoreOrThrow = (
+  ...args: Parameters<typeof getMessageSourceFromStore>
+) => {
+  const [queueId, _, logger] = args
+
+  const err = () => {
+    logger?.error(
+      { ...(typeof queueId === "object" ? queueId : { queueId }) },
+      "Could not find queue or subscription",
+    )
+
+    return new Error(`Queue or subscription not found`)
+  }
+
+  const res = getMessageSourceFromStore(...args)
+
+  if (!res) {
+    throw err()
+  }
+
+  return res
+}
+
+const getMessageSourceFromStore = (
+  queueId: _QualifiedQueueId | _QualifiedSubscriptionId | string,
+  store: BrokerStore,
+  logger: Logger | undefined,
+): QueueOrSubscriptionModel | undefined => {
   if (typeof queueId === "string" || "queue_name" in queueId) {
-    try {
-      return getQueueFromStoreOrThrow(
-        typeof queueId === "object" ? queueId : queueId,
-        store,
-        logger,
-      )
-    } catch {
-      // TODO: make sure this is an expected error
+    const res = getQueueFromStore(
+      typeof queueId === "object" ? queueId : queueId,
+      store,
+      logger,
+    )
+
+    if (res) {
+      return res
     }
   }
 
   if (typeof queueId === "string" || "subscription_name" in queueId) {
-    try {
-      return getSubscriptionFromStoreOrThrow(
-        typeof queueId === "object" ? queueId : queueId,
-        store,
-        logger,
-      )
-    } catch {
-      // TODO: make sure this is an expected error
+    const res = getSubscriptionFromStore(
+      typeof queueId === "object" ? queueId : queueId,
+      store,
+      logger,
+    )
+
+    if (res) {
+      return res
     }
   }
 
-  throw err()
+  return undefined
 }
 
 export const getMessageDestinationFromStoreOrThrow = (
-  queueId:
-    | QualifiedQueueOrTopicId
-    | _QualifiedQueueId
-    | _QualifiedTopicId
-    | string,
-  store: BrokerStore,
-  logger: Logger | undefined,
-): QueueOrTopicModel => {
+  ...args: Parameters<typeof getMessageDestinationFromStore>
+) => {
+  const [queueId, _, logger] = args
+
   const err = () => {
     logger?.error(
       { ...(typeof queueId === "object" ? queueId : { queueId }) },
@@ -101,23 +135,41 @@ export const getMessageDestinationFromStoreOrThrow = (
     return new Error(`Queue not found`)
   }
 
+  const res = getMessageDestinationFromStore(...args)
+
+  if (!res) {
+    throw err()
+  }
+
+  return res
+}
+
+const getMessageDestinationFromStore = (
+  queueId:
+    | QualifiedQueueOrTopicId
+    | _QualifiedQueueId
+    | _QualifiedTopicId
+    | string,
+  store: BrokerStore,
+  logger: Logger | undefined,
+): QueueOrTopicModel | undefined => {
   if (
     typeof queueId === "string" ||
     "queue_name" in queueId ||
     "queue_or_topic_name" in queueId
   ) {
-    try {
-      return getQueueFromStoreOrThrow(
-        typeof queueId === "object"
-          ? "queue_name" in queueId
-            ? queueId
-            : { ...queueId, queue_name: queueId.queue_or_topic_name }
-          : queueId,
-        store,
-        logger,
-      )
-    } catch {
-      // TODO: make sure this is an expected error
+    const res = getQueueFromStore(
+      typeof queueId === "object"
+        ? "queue_name" in queueId
+          ? queueId
+          : { ...queueId, queue_name: queueId.queue_or_topic_name }
+        : queueId,
+      store,
+      logger,
+    )
+
+    if (res) {
+      return res
     }
   }
 
@@ -126,40 +178,55 @@ export const getMessageDestinationFromStoreOrThrow = (
     "topic_name" in queueId ||
     "queue_or_topic_name" in queueId
   ) {
-    try {
-      return getTopicFromStoreOrThrow(
-        typeof queueId === "object"
-          ? "topic_name" in queueId
-            ? queueId
-            : { ...queueId, topic_name: queueId.queue_or_topic_name }
-          : queueId,
-        store,
-        logger,
-      )
-    } catch {
-      // TODO: make sure this is an expected error
+    const res = getTopicFromStore(
+      typeof queueId === "object"
+        ? "topic_name" in queueId
+          ? queueId
+          : { ...queueId, topic_name: queueId.queue_or_topic_name }
+        : queueId,
+      store,
+      logger,
+    )
+
+    if (res) {
+      return res
     }
   }
 
-  throw err()
+  return undefined
 }
 
 export const getQueueFromStoreOrThrow = (
   queueId: _QualifiedQueueId | string,
   store: BrokerStore,
   logger: Logger | undefined,
-): QueueModel => {
+) => {
   const err = () => {
     logger?.error(
       { ...(typeof queueId === "object" ? queueId : { queueId }) },
       "Could not find queue",
     )
 
-    return new Error(`Queue not found: ${queue_name}`)
+    return new Error(`Queue not found`)
   }
 
+  const queue = getQueueFromStore(queueId, store, logger)
+
+  if (!queue) {
+    throw err()
+  }
+
+  return queue
+}
+
+const getQueueFromStore = (
+  queueId: _QualifiedQueueId | string,
+  store: BrokerStore,
+  _logger: Logger | undefined,
+): QueueModel | undefined => {
   if (typeof queueId === "string") {
-    return { ...store.sb_queue.getOrThrow(queueId, err), _model: "sb_queue" }
+    const queue = store.sb_queue.get(queueId)
+    return queue ? { ...queue, _model: "sb_queue" } : undefined
   }
 
   const { namespace_name, queue_name, resource_group_name, subscription_id } =
@@ -178,9 +245,9 @@ export const getQueueFromStoreOrThrow = (
         queue.sb_namespace().resource_group().subscription().subscriptionId ===
         subscription_id,
     )
-    .executeTakeFirstOrThrow(err)
+    .executeTakeFirst()
 
-  return { ...queue, _model: "sb_queue" }
+  return queue ? { ...queue, _model: "sb_queue" } : undefined
 }
 
 export const getTopicFromStoreOrThrow = (
@@ -199,11 +266,29 @@ export const getTopicFromStoreOrThrow = (
     )
   }
 
+  const result = getTopicFromStore(queueId, store, logger)
+
+  if (!result) {
+    throw err()
+  }
+
+  return result
+}
+
+const getTopicFromStore = (
+  queueId: _QualifiedTopicId | string,
+  store: BrokerStore,
+  _logger: Logger | undefined,
+): TopicModel | undefined => {
   if (typeof queueId === "string") {
-    return {
-      ...store.sb_topic.getOrThrow(queueId, err),
-      _model: "sb_topic",
-    }
+    const topic = store.sb_topic.get(queueId)
+
+    return topic
+      ? {
+          ...topic,
+          _model: "sb_topic",
+        }
+      : undefined
   }
 
   const { namespace_name, topic_name, resource_group_name, subscription_id } =
@@ -222,16 +307,16 @@ export const getTopicFromStoreOrThrow = (
         topic.sb_namespace().resource_group().subscription().subscriptionId ===
         subscription_id,
     )
-    .executeTakeFirstOrThrow(err)
+    .executeTakeFirst()
 
-  return { ...topic, _model: "sb_topic" }
+  return topic ? { ...topic, _model: "sb_topic" } : undefined
 }
 
 export const getSubscriptionFromStoreOrThrow = (
   queueId: _QualifiedSubscriptionId | string,
   store: BrokerStore,
   logger: Logger | undefined,
-): SubscriptionModel => {
+) => {
   const err = () => {
     logger?.error(
       { ...(typeof queueId === "object" ? queueId : { queueId }) },
@@ -243,11 +328,29 @@ export const getSubscriptionFromStoreOrThrow = (
     )
   }
 
+  const result = getSubscriptionFromStore(queueId, store, logger)
+
+  if (!result) {
+    throw err()
+  }
+
+  return result
+}
+
+const getSubscriptionFromStore = (
+  queueId: _QualifiedSubscriptionId | string,
+  store: BrokerStore,
+  _logger: Logger | undefined,
+): SubscriptionModel | undefined => {
   if (typeof queueId === "string") {
-    return {
-      ...store.sb_subscription.getOrThrow(queueId, err),
-      _model: "sb_subscription",
-    }
+    const sub = store.sb_subscription.get(queueId)
+
+    return sub
+      ? {
+          ...sub,
+          _model: "sb_subscription",
+        }
+      : undefined
   }
 
   const {
@@ -276,9 +379,11 @@ export const getSubscriptionFromStoreOrThrow = (
         subscription.sb_topic().sb_namespace().resource_group().subscription()
           .subscriptionId === subscription_id,
     )
-    .executeTakeFirstOrThrow(err)
+    .executeTakeFirst()
 
-  return { ...subscription, _model: "sb_subscription" }
+  return subscription
+    ? { ...subscription, _model: "sb_subscription" }
+    : undefined
 }
 
 export function getQualifiedIdFromModel(model: QueueModel): _QualifiedQueueId
