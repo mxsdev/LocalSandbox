@@ -1,4 +1,4 @@
-import rhea, { message } from "rhea"
+import rhea, { message, Session } from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
 import { Delivery, Message, Sender, SenderEvents } from "rhea"
 import { Logger, P } from "pino"
@@ -7,6 +7,7 @@ import Long from "long"
 import {
   BufferLikeEncodedLong,
   serializedLong,
+  unserializedLongToArrayLike,
   unserializedLongToBufferLike,
 } from "../util/long.js"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
@@ -38,6 +39,7 @@ import {
   parseRheaMessage,
   parseRheaMessageBody,
 } from "../amqp/parse-message.js"
+import { c } from "rhea/typings/types.js"
 
 interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
   delivery: Delivery
@@ -183,6 +185,7 @@ class SequenceNumberFactory {
 
 interface MessageConsumer<M extends TaggedMessage> {
   sender: Sender
+  session_id: string | undefined
   current_delivery: DeliveryMap<QueueConsumerDeliveryInfo<M>>
   listeners: Partial<Record<SenderEvents, (...args: any[]) => void>>
   schedule_for_deletion: boolean
@@ -231,18 +234,20 @@ class MessageConsumers<M extends TaggedMessage> {
     return this._consumers[sender.name]
   }
 
-  add(consumer: MessageConsumer<M>, sessionId?: string) {
-    if (sessionId && this._consumer_by_session[sessionId]) {
+  add(consumer: MessageConsumer<M>) {
+    const session_id = consumer.session_id
+
+    if (session_id && this._consumer_by_session[session_id]) {
       // TODO: use error instance so it can be caught upstack
       throw new Error("Session already exists")
     }
 
     this._consumers[consumer.sender.name] = {
       ...consumer,
-      session_id: sessionId,
+      session_id: session_id,
     }
-    if (sessionId) {
-      this._consumer_by_session[sessionId] = consumer
+    if (session_id) {
+      this._consumer_by_session[session_id] = consumer
     }
   }
 
@@ -299,19 +304,32 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   abstract queue_type: "sb_queue" | "sb_subscription"
   abstract get queue(): QueueOrSubscription
 
-  private get fifo() {
-    return false
-  }
-
   private pushMessage(message: ScheduledMessage<M>) {
     message.message_annotations[Constants.enqueuedTime] = new Date()
     message.message_annotations[Constants.messageState] ??=
       BrokerConstants.messageState.active
 
-    this._messages.enqueue({
-      message,
-      scheduled_at: message.message_annotations[Constants.enqueuedTime],
-    })
+    const session_id = message.group_id
+
+    if (session_id) {
+      // TODO: make sure requiresSession is enabled
+
+      this._session_messages[session_id] ??= new PriorityQueue(
+        compareScheduledMessages,
+      )
+
+      this._session_messages[session_id].enqueue({
+        message,
+        scheduled_at: message.message_annotations[Constants.enqueuedTime],
+      })
+    } else {
+      // TODO: make sure requiresSession is disabled
+
+      this._messages.enqueue({
+        message,
+        scheduled_at: message.message_annotations[Constants.enqueuedTime],
+      })
+    }
   }
 
   private enqueue(...messages: ScheduledMessage<M>[]) {
@@ -322,9 +340,11 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     messages.forEach((message) => this.pushMessage(message))
   }
 
-  private dequeue() {
+  private dequeue(session_id: string | undefined) {
     try {
-      return this._messages.dequeue()
+      return (
+        session_id ? this._session_messages[session_id] : this._messages
+      )?.dequeue()
     } catch {
       return undefined
     }
@@ -481,26 +501,28 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   private tryFlush() {
-    let consumer: MessageConsumer<ScheduledMessage<M>> | undefined
-
     const lockDurationMs = Temporal.Duration.from(
       this.queue.properties.lockDuration,
     ).total("milliseconds")
 
+    this.logger?.debug({ messages: this._messages.size() }, "Flushing messages")
+
     this.refreshIdleTimeout()
     this.propagateAccess()
-
-    this.logger?.debug({ messages: this._messages.size() }, "Flushing messages")
 
     for (const consumer of this.consumers.values.filter(
       (consumer) =>
         consumer.sender.sendable() &&
         consumer.sender.is_open() &&
         consumer.sender.is_remote_open() &&
-        (!this.fifo || this.locked_messages.size === 0) &&
-        this._messages.size() > 0,
+        consumer.sender.has_credit(),
     )) {
-      const { message } = this.dequeue()!
+      const enqueued_message = this.dequeue(consumer.session_id)
+      if (!enqueued_message) {
+        continue
+      }
+
+      const { message } = enqueued_message
 
       // check expired
       if (
@@ -546,7 +568,8 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       message.message_annotations[Constants.lockedUntil] =
         +new Date().getTime() + lockDurationMs
 
-      // TODO: timeout
+      // TODO: set drained based on whether there are more messages to send
+
       const delivery = consumer.sender.send(message)
 
       message.delivery_count ??= 0
@@ -916,23 +939,36 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   addConsumer(sender: Sender) {
+    const sessionId = sender.source.filter?.[Constants.sessionFilterName]
+
     this.logger?.debug(
-      { sender: sender.name, queue_id: this.queue_or_subscription_id },
+      {
+        sender: sender.name,
+        queue_id: this.queue_or_subscription_id,
+        sessionId,
+        properties: sender.properties,
+      },
       "Registering sender",
     )
 
     const listeners = {
       [SenderEvents.senderOpen]: (e: any) => {
         this.logger?.trace({ sender: e.sender.name }, "sender is open")
-        this.tryFlush()
+        // this.tryFlush()
       },
       [SenderEvents.sendable]: (e: any) => {
         this.logger?.debug("sender is sendable")
         this.tryFlush()
       },
-      [SenderEvents.senderDraining]: (e: any) => {
+      [SenderEvents.senderDraining]: (e: {
+        sender: Sender
+        session: Session
+      }) => {
         this.logger?.debug("sender is draining")
-        // this.tryFlush()
+        this.tryFlush()
+
+        e.sender.set_drained(true)
+        // e.session._write_flow(e.sender)
       },
       [SenderEvents.senderClose]: (e: any) => {
         this.logger?.debug("sender is closed")
@@ -962,7 +998,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       [SenderEvents.settled]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug("sender settled")
 
-        this.tryFlush()
+        // this.tryFlush()
       },
       [SenderEvents.rejected]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug(Object.keys(e), "sender rejected message")
@@ -975,16 +1011,41 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       },
     }
 
+    try {
+      this.consumers.add({
+        sender,
+        listeners,
+        current_delivery: new DeliveryMap(this.logger),
+        schedule_for_deletion: false,
+        session_id: sessionId,
+      })
+
+      sender.set_source({
+        ...sender.source,
+        filter: {
+          [Constants.sessionFilterName]: sessionId,
+        },
+      })
+      ;(sender as any).local.attach.properties = {
+        // TODO: support session locking
+        "com.microsoft:locked-until-utc": unserializedLongToArrayLike.parse(
+          Long.fromNumber(Date.now() + 100000)
+            .mul(10000)
+            .add(621355968000000000),
+        ),
+      }
+    } catch (e) {
+      // TODO: filter based on error type
+      this.logger?.error(
+        { sender: sender.name, sessionId, err: e },
+        "Error adding consumer",
+      )
+      return
+    }
+
     Object.entries(listeners).forEach((args) => sender.addListener(...args))
 
-    this.consumers.add({
-      sender,
-      listeners,
-      current_delivery: new DeliveryMap(this.logger),
-      schedule_for_deletion: false,
-    })
-
-    this.tryFlush()
+    // this.tryFlush()
 
     this.propagateAccess()
   }
@@ -1027,6 +1088,8 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   close() {
+    this.logger?.debug("Closing message sequence")
+
     this.message_scheduler.close()
     Object.values(this.message_expiration_timeouts).forEach(clearTimeout)
 

@@ -279,6 +279,12 @@ export class AzureServiceBusBroker extends BrokerServer {
                 }),
               }),
               z.object({
+                operation: z.literal(Constants.operations.renewSessionLock),
+                body: z.object({
+                  [Constants.sessionIdMapKey]: z.string(),
+                }),
+              }),
+              z.object({
                 operation: z.literal(
                   BrokerConstants.debug.operations.setSequenceNumber,
                 ),
@@ -527,6 +533,16 @@ export class AzureServiceBusBroker extends BrokerServer {
               }
               break
 
+            case Constants.operations.renewSessionLock:
+              {
+                respondSuccess(consumer, {
+                  expiration: Date.now() + 100000,
+                })
+                delivery.accept()
+                delivery.update(true)
+              }
+              break
+
             default:
               {
                 this.logger?.error(
@@ -596,7 +612,10 @@ export class AzureServiceBusBroker extends BrokerServer {
 
   override async onSenderOpen({ sender }: BrokerSenderEvent): Promise<void> {
     this.logger?.debug(
-      { sender: sender.name, properties: sender.properties },
+      {
+        sender: sender.name,
+        properties: sender.properties,
+      },
       "sender opened",
     )
 
