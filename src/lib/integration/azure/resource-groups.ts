@@ -24,6 +24,7 @@ azure_routes.implementRoute(
       .insert()
       .values({
         ...parameters,
+        id: `${ctx.subscription.id}/resourceGroups/${req.routeParams.resourceGroupName}`,
         // TODO: support unique indexes
         name: parameters.name ?? req.routeParams.resourceGroupName,
         subscription_id: ctx.subscription.subscriptionId,

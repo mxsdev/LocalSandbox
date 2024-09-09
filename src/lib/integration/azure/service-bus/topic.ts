@@ -34,6 +34,7 @@ azure_routes.implementRoute(
       .insert()
       .values({
         ...parameters,
+        id: `${namespace.id}/topics/${req.routeParams.topicName}`,
         location: namespace.location,
         sb_namespace_id: namespace.id,
         name: req.routeParams.topicName,

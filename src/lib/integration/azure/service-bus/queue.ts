@@ -34,6 +34,7 @@ azure_routes.implementRoute(
       .insert()
       .values({
         ...parameters,
+        id: `${namespace.id}/queues/${req.routeParams.queueName}`,
         location: namespace.location,
         sb_namespace_id: namespace.id,
         name: req.routeParams.queueName,

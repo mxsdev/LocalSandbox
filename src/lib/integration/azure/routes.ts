@@ -184,94 +184,76 @@ export const azure_routes = createIntegration({
     },
     resource_group: {
       primaryKey: "id",
-      schema: resourceGroup
-        .omit({ id: true })
-        .extend({ id: resourceGroup.shape.id })
-        .transform((v) => ({
-          ...v,
-          id: v.id ?? randomUUID(),
-        })),
+      schema: resourceGroup.omit({ id: true }).extend({ id: z.string() }),
       hasOne: ["subscription"],
     },
     sb_namespace: {
       primaryKey: "id",
-      schema: sbNamespace.transform((v) => ({
-        ...v,
-        id: v.id ?? randomUUID(),
-      })),
+      schema: sbNamespace.and(z.object({ id: z.string() })),
       hasOne: ["resource_group"],
     },
     sb_topic: {
       primaryKey: "id",
-      schema: sbTopic
-        .and(
-          z.object({
-            properties: sbTopicProperties
-              .omit({
-                ...queueLikeExcludesDefaults,
-              })
-              .extend({
-                ...queueLikeDefaults,
-              })
-              .default({}),
+      schema: sbTopic.and(
+        z.object({
+          properties: sbTopicProperties
+            .omit({
+              ...queueLikeExcludesDefaults,
+            })
+            .extend({
+              ...queueLikeDefaults,
+            })
+            .default({}),
 
-            autoDeleteTimeout: zodTimeout.optional(),
-          }),
-        )
-        .transform((v) => ({
-          ...v,
-          id: v.id ?? randomUUID(),
-        })),
+          autoDeleteTimeout: zodTimeout.optional(),
+
+          id: z.string(),
+        }),
+      ),
       hasOne: ["sb_namespace"],
     },
     sb_subscription: {
       primaryKey: "id",
-      schema: sbSubscription
-        .and(
-          z.object({
-            properties: sbSubscriptionProperties
-              .omit({
-                ...queueLikeExcludesDefaults,
-                ...queueOrSubscriptionExcludesDefaults,
-              })
-              .extend({
-                ...queueLikeDefaults,
-                ...queueOrSubscriptionDefaults,
-              })
-              .default({}),
+      schema: sbSubscription.and(
+        z.object({
+          properties: sbSubscriptionProperties
+            .omit({
+              ...queueLikeExcludesDefaults,
+              ...queueOrSubscriptionExcludesDefaults,
+            })
+            .extend({
+              ...queueLikeDefaults,
+              ...queueOrSubscriptionDefaults,
+            })
+            .default({}),
 
-            autoDeleteTimeout: zodTimeout.optional(),
-          }),
-        )
-        .transform((v) => ({
-          ...v,
-          id: v.id ?? randomUUID(),
-        })),
+          autoDeleteTimeout: zodTimeout.optional(),
+
+          id: z.string(),
+        }),
+      ),
       hasOne: ["sb_topic"],
     },
     sb_queue: {
       primaryKey: "id",
-      schema: sbQueue
-        .and(
-          z.object({
-            properties: sbQueueProperties
-              .omit({
-                ...queueLikeExcludesDefaults,
-                ...queueOrSubscriptionExcludesDefaults,
-              })
-              .extend({
-                ...queueLikeDefaults,
-                ...queueOrSubscriptionDefaults,
-              })
-              .default({}),
+      schema: sbQueue.and(
+        z.object({
+          properties: sbQueueProperties
+            .omit({
+              ...queueLikeExcludesDefaults,
+              ...queueOrSubscriptionExcludesDefaults,
+            })
+            .extend({
+              ...queueLikeDefaults,
+              ...queueOrSubscriptionDefaults,
+            })
+            .default({}),
 
-            autoDeleteTimeout: zodTimeout.optional(),
-          }),
-        )
-        .transform((v) => ({
-          ...v,
-          id: v.id ?? randomUUID(),
-        })),
+          autoDeleteTimeout: zodTimeout.optional(),
+
+          id: z.string(),
+        }),
+      ),
       hasOne: ["sb_namespace"],
     },
   }),
