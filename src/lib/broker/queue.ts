@@ -613,6 +613,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
           delivery_id: delivery.id,
           consumer: consumer.sender.name,
           delivery_tag: Buffer.from(delivery.tag).length,
+          sender_credit: sender_credit[consumer.sender.name],
         },
         "Sent message",
       )
