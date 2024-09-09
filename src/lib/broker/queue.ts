@@ -40,7 +40,7 @@ import {
   parseRheaMessageBody,
 } from "../amqp/parse-message.js"
 import { c } from "rhea/typings/types.js"
-import { SessionLockedError, SessionRequiredError } from "./errors.js"
+import { SessionCannotBeLockedError, SessionRequiredError } from "./errors.js"
 
 interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
   delivery: Delivery
@@ -239,7 +239,7 @@ class MessageConsumers<M extends TaggedMessage> {
     const session_id = consumer.session_id
 
     if (session_id && this._consumer_by_session[session_id]) {
-      throw new SessionLockedError(session_id)
+      throw new SessionCannotBeLockedError(session_id)
     }
 
     this._consumers[consumer.sender.name] = {
@@ -1023,45 +1023,27 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       },
     }
 
-    try {
-      this.consumers.add({
-        sender,
-        listeners,
-        current_delivery: new DeliveryMap(this.logger),
-        schedule_for_deletion: false,
-        session_id: sessionId,
-      })
+    this.consumers.add({
+      sender,
+      listeners,
+      current_delivery: new DeliveryMap(this.logger),
+      schedule_for_deletion: false,
+      session_id: sessionId,
+    })
 
-      sender.set_source({
-        ...sender.source,
-        filter: {
-          [Constants.sessionFilterName]: sessionId,
-        },
-      })
-      ;(sender as any).local.attach.properties = {
-        // TODO: support session locking
-        "com.microsoft:locked-until-utc": unserializedLongToArrayLike.parse(
-          Long.fromNumber(Date.now() + 100000)
-            .mul(10000)
-            .add(621355968000000000),
-        ),
-      }
-    } catch (e) {
-      if (e instanceof SessionLockedError) {
-        sender.close({
-          condition: "'com.microsoft:session-cannot-be-locked'",
-          description: `The requested session '${e.session_id}' cannot be accepted. It may be locked by another receiver.`,
-        })
-
-        return
-      }
-
-      // TODO: filter based on error type
-      this.logger?.error(
-        { sender: sender.name, sessionId, err: e },
-        "Error adding consumer",
-      )
-      return
+    sender.set_source({
+      ...sender.source,
+      filter: {
+        [Constants.sessionFilterName]: sessionId,
+      },
+    })
+    ;(sender as any).local.attach.properties = {
+      // TODO: support session locking
+      "com.microsoft:locked-until-utc": unserializedLongToArrayLike.parse(
+        Long.fromNumber(Date.now() + 100000)
+          .mul(10000)
+          .add(621355968000000000),
+      ),
     }
 
     Object.entries(listeners).forEach((args) => sender.addListener(...args))

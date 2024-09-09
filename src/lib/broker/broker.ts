@@ -48,7 +48,12 @@ import {
   SubqueueType,
 } from "./types.js"
 import { parseBrokerURL } from "./url.js"
-import { SessionLockedError, SessionRequiredError } from "./errors.js"
+import {
+  SessionCannotBeLockedError,
+  SessionRequiredError,
+  StoreBusError,
+} from "./errors.js"
+import { ServiceBusError } from "@azure/service-bus"
 
 type ConnectionQueueLinkId =
   | QualifiedMessageDestinationId
@@ -576,33 +581,24 @@ export class AzureServiceBusBroker extends BrokerServer {
             "delivering message batch",
           )
 
-          try {
-            this.consumer_balancer.sendMessagesToQueue(
-              queue,
-              ...messages_to_enqueue.map((m) => {
-                m["message_id"] ??= generate_uuid()
-                return m as typeof m & { message_id: string }
-              }),
-            )
-          } catch (err) {
-            if (err instanceof SessionRequiredError) {
-              delivery.reject({
-                condition: ErrorNameConditionMapper.InvalidOperationError,
-                description:
-                  "The SessionId was not set on a message, and it cannot be sent to the entity. Entities that have session support enabled can only receive messages that have the SessionId set to a valid value.",
-              })
-              return
-            }
-
-            throw err
-          }
+          this.consumer_balancer.sendMessagesToQueue(
+            queue,
+            ...messages_to_enqueue.map((m) => {
+              m["message_id"] ??= generate_uuid()
+              return m as typeof m & { message_id: string }
+            }),
+          )
 
           delivery.accept()
         }
       }
     } catch (e: any) {
-      this.logger?.error({ err: e }, "Unexpected error on message")
+      if (e instanceof StoreBusError) {
+        delivery.reject(e.amqpError)
+        return
+      }
 
+      this.logger?.error({ err: e }, "Unexpected error on message")
       delivery.reject({ description: e.message })
     }
   }
@@ -633,20 +629,31 @@ export class AzureServiceBusBroker extends BrokerServer {
       "sender opened",
     )
 
-    const queue = this.consumeHandshake(sender.connection)
+    try {
+      const queue = this.consumeHandshake(sender.connection)
 
-    if (!queue) {
-      this.cbs_senders[sender.name] = sender
-    } else {
-      if (!isQualifiedMessageSourceId(queue)) {
-        this.logger?.error(
-          { queue },
-          "Tried to connect receiver to message destination",
-        )
+      if (!queue) {
+        this.cbs_senders[sender.name] = sender
+      } else {
+        if (!isQualifiedMessageSourceId(queue)) {
+          this.logger?.error(
+            { queue },
+            "Tried to connect receiver to message destination",
+          )
+          return
+        }
+
+        this.consumer_balancer.add(queue, sender)
+      }
+    } catch (err) {
+      if (err instanceof StoreBusError) {
+        sender.close(err.amqpError)
         return
       }
 
-      this.consumer_balancer.add(queue, sender)
+      // TODO: filter based on error type
+      this.logger?.error({ sender: sender.name, err }, "Error adding consumer")
+      return
     }
   }
 
