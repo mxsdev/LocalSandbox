@@ -1,6 +1,6 @@
 import { fixturedTest } from "test/fixtured-test.js"
 
-fixturedTest("can peek message", async ({ azure_queue, expect }) => {
+fixturedTest.only("can peek message", async ({ azure_queue, expect }) => {
   const { createSender, createReceiver, createQueue } = azure_queue
 
   const queue = await createQueue({})

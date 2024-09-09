@@ -340,11 +340,21 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     messages.forEach((message) => this.pushMessage(message))
   }
 
+  private sessionQueue(session_id: string | undefined) {
+    return session_id ? this._session_messages[session_id] : this._messages
+  }
+
+  private peek(session_id: string | undefined) {
+    try {
+      return this.sessionQueue(session_id)?.front()
+    } catch {
+      return undefined
+    }
+  }
+
   private dequeue(session_id: string | undefined) {
     try {
-      return (
-        session_id ? this._session_messages[session_id] : this._messages
-      )?.dequeue()
+      return this.sessionQueue(session_id)?.dequeue()
     } catch {
       return undefined
     }
@@ -485,7 +495,9 @@ export abstract class MessageSequence<M extends TaggedMessage> {
           new Date(m.absolute_expiry_time) > new Date(),
       )
       .filter(
-        (m) => args.group_id === undefined || m.group_id === args.group_id,
+        (m) =>
+          args.group_id === undefined ||
+          m.group_id === (args.group_id ?? undefined),
       )
   }
 
@@ -521,17 +533,26 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     this.refreshIdleTimeout()
     this.propagateAccess()
 
-    for (const consumer of this.consumers.values.filter(
-      (consumer) =>
-        consumer.sender.sendable() &&
-        consumer.sender.is_open() &&
-        consumer.sender.is_remote_open() &&
-        consumer.sender.has_credit(),
-    )) {
-      const enqueued_message = this.dequeue(consumer.session_id)
-      if (!enqueued_message) {
-        continue
-      }
+    const sender_credit: Record<string, number> = {}
+
+    let consumer: MessageConsumer<M> | undefined
+    while (
+      (consumer = this.consumers.values.find(
+        ({ sender, session_id }) =>
+          sender.sendable() &&
+          sender.is_open() &&
+          sender.is_remote_open() &&
+          sender.has_credit() &&
+          this.peek(session_id) &&
+          (sender_credit[sender.name] === undefined ||
+            sender_credit[sender.name]! > 0),
+      ))
+    ) {
+      const enqueued_message = this.dequeue(consumer.session_id)!
+
+      sender_credit[consumer.sender.name] ??= (consumer.sender as any)[
+        "credit"
+      ] as number
 
       const { message } = enqueued_message
 
@@ -582,6 +603,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       // TODO: set drained based on whether there are more messages to send
 
       const delivery = consumer.sender.send(message)
+      sender_credit[consumer.sender.name]!--
 
       message.delivery_count ??= 0
       message.delivery_count += 1
