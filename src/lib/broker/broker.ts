@@ -28,7 +28,7 @@ import {
   isQualifiedMessageDestinationId,
   isQualifiedQueueId,
 } from "./util.js"
-import { Constants } from "@azure/core-amqp"
+import { Constants, ErrorNameConditionMapper } from "@azure/core-amqp"
 import { Deque } from "@datastructures-js/deque"
 import { z } from "zod"
 import {
@@ -48,6 +48,12 @@ import {
   SubqueueType,
 } from "./types.js"
 import { parseBrokerURL } from "./url.js"
+import {
+  SessionCannotBeLockedError,
+  SessionRequiredError,
+  StoreBusError,
+} from "./errors.js"
+import { ServiceBusError } from "@azure/service-bus"
 
 type ConnectionQueueLinkId =
   | QualifiedMessageDestinationId
@@ -90,7 +96,6 @@ export class AzureServiceBusBroker extends BrokerServer {
     delivery,
     receiver,
     connection,
-    session,
   }: BrokerMessageEvent): Promise<void> {
     const operation = message.application_properties?.["operation"]
 
@@ -264,8 +269,11 @@ export class AzureServiceBusBroker extends BrokerServer {
                   [Constants.dispositionStatus]: z.enum([
                     "completed",
                     "abandoned",
+                    "suspended",
                     // TODO: dead lettered?
                   ]),
+                  [Constants.deadLetterReason]: z.string().optional(),
+                  [Constants.deadLetterDescription]: z.string().optional(),
                 }),
               }),
               z.object({
@@ -273,6 +281,12 @@ export class AzureServiceBusBroker extends BrokerServer {
                 associatedLinkName: z.string(),
                 body: z.object({
                   [Constants.lockTokens]: serializedLockToken.array(),
+                }),
+              }),
+              z.object({
+                operation: z.literal(Constants.operations.renewSessionLock),
+                body: z.object({
+                  [Constants.sessionIdMapKey]: z.string(),
                 }),
               }),
               z.object({
@@ -473,6 +487,8 @@ export class AzureServiceBusBroker extends BrokerServer {
                   body: {
                     [Constants.lockTokens]: lockTokens,
                     [Constants.dispositionStatus]: dispositionStatus,
+                    [Constants.deadLetterReason]: deadLetterReason,
+                    [Constants.deadLetterDescription]: deadLetterDescription,
                   },
                   associatedLinkName,
                 } = parsed.data
@@ -483,6 +499,10 @@ export class AzureServiceBusBroker extends BrokerServer {
                     { name: associatedLinkName },
                     { tag },
                     dispositionStatus,
+                    {
+                      deadLetterReason,
+                      deadLetterDescription,
+                    },
                   )
                 })
 
@@ -515,6 +535,16 @@ export class AzureServiceBusBroker extends BrokerServer {
                   // TODO: populate this...
                   expirations,
                 })
+              }
+              break
+
+            case Constants.operations.renewSessionLock:
+              {
+                respondSuccess(consumer, {
+                  expiration: Date.now() + 100000,
+                })
+                delivery.accept()
+                delivery.update(true)
               }
               break
 
@@ -558,12 +588,17 @@ export class AzureServiceBusBroker extends BrokerServer {
               return m as typeof m & { message_id: string }
             }),
           )
+
           delivery.accept()
         }
       }
     } catch (e: any) {
-      this.logger?.error({ err: e }, "Unexpected error on message")
+      if (e instanceof StoreBusError) {
+        delivery.reject(e.amqpError)
+        return
+      }
 
+      this.logger?.error({ err: e }, "Unexpected error on message")
       delivery.reject({ description: e.message })
     }
   }
@@ -587,24 +622,38 @@ export class AzureServiceBusBroker extends BrokerServer {
 
   override async onSenderOpen({ sender }: BrokerSenderEvent): Promise<void> {
     this.logger?.debug(
-      { sender: sender.name, properties: sender.properties },
+      {
+        sender: sender.name,
+        properties: sender.properties,
+      },
       "sender opened",
     )
 
-    const queue = this.consumeHandshake(sender.connection)
+    try {
+      const queue = this.consumeHandshake(sender.connection)
 
-    if (!queue) {
-      this.cbs_senders[sender.name] = sender
-    } else {
-      if (!isQualifiedMessageSourceId(queue)) {
-        this.logger?.error(
-          { queue },
-          "Tried to connect receiver to message destination",
-        )
+      if (!queue) {
+        this.cbs_senders[sender.name] = sender
+      } else {
+        if (!isQualifiedMessageSourceId(queue)) {
+          this.logger?.error(
+            { queue },
+            "Tried to connect receiver to message destination",
+          )
+          return
+        }
+
+        this.consumer_balancer.add(queue, sender)
+      }
+    } catch (err) {
+      if (err instanceof StoreBusError) {
+        sender.close(err.amqpError)
         return
       }
 
-      this.consumer_balancer.add(queue, sender)
+      // TODO: filter based on error type
+      this.logger?.error({ sender: sender.name, err }, "Error adding consumer")
+      return
     }
   }
 
@@ -617,18 +666,6 @@ export class AzureServiceBusBroker extends BrokerServer {
       delete this.cbs_senders[sender.name]
     } else {
       this.consumer_balancer.remove(sender)
-    }
-  }
-
-  private getSessionId(session: Session): string {
-    const res = this.session_id_map.get(session)
-
-    if (res) {
-      return res
-    } else {
-      const id = this.generateUUID()
-      this.session_id_map.set(session, id)
-      return id
     }
   }
 

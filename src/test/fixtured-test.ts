@@ -23,6 +23,7 @@ import {
   ServiceBusClient,
   ServiceBusClientOptions,
   ServiceBusReceiverOptions,
+  ServiceBusSessionReceiverOptions,
 } from "@azure/service-bus"
 import { z } from "zod"
 import { DefaultAzureCredential } from "@azure/identity"
@@ -246,6 +247,27 @@ const getAzureContextWithQueueFixtures = async (
     return sender
   }
 
+  const acceptSession = async (
+    ...args:
+      | [
+          queueName: string,
+          sessionId: string,
+          options?: ServiceBusSessionReceiverOptions,
+        ]
+      | [
+          topicName: string,
+          subscriptionName: string,
+          sessionId: string,
+          options?: ServiceBusSessionReceiverOptions,
+        ]
+  ) => {
+    const receiver = await sb_client.acceptSession(
+      ...(args as unknown as [any, any]),
+    )
+    onTestFinished(() => receiver.close())
+    return receiver
+  }
+
   const createReceiver = (
     ...args:
       | [queueName: string, options?: ServiceBusReceiverOptions]
@@ -320,6 +342,7 @@ const getAzureContextWithQueueFixtures = async (
 
     createSender,
     createReceiver,
+    acceptSession,
 
     createQueue,
     getQueue,

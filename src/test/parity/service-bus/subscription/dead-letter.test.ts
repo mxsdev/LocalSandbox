@@ -28,7 +28,9 @@ fixturedTest(
 
     const receiver = createReceiver(topic.name!, subscription.name!)
 
-    const [, message] = await receiver.receiveMessages(2)
+    const [, message] = await receiver.receiveMessages(2, {
+      maxWaitTimeInMs: 0,
+    })
     expect(message!.body).toBe("hello world!")
     expect(message?.sequenceNumber).toBeDefined()
 
@@ -39,7 +41,9 @@ fixturedTest(
 
     const receiver_dlq = createReceiver(dlq.name!)
 
-    const [dead_lettered_message] = await receiver_dlq.receiveMessages(1)
+    const [dead_lettered_message] = await receiver_dlq.receiveMessages(1, {
+      maxWaitTimeInMs: 0,
+    })
     expect(dead_lettered_message!.body).toBe("hello world!")
 
     await receiver_dlq.completeMessage(dead_lettered_message!)

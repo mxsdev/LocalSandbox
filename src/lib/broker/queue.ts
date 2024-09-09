@@ -1,13 +1,13 @@
-import rhea, { message } from "rhea"
+import rhea, { message, Session } from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
 import { Delivery, Message, Sender, SenderEvents } from "rhea"
-import { Deque } from "@datastructures-js/deque"
 import { Logger, P } from "pino"
 import { Constants } from "@azure/core-amqp"
 import Long from "long"
 import {
   BufferLikeEncodedLong,
   serializedLong,
+  unserializedLongToArrayLike,
   unserializedLongToBufferLike,
 } from "../util/long.js"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
@@ -31,10 +31,20 @@ import {
   getTopicFromStoreOrThrow,
   populateMessageWithDefaultExpiryTime,
 } from "./util.js"
+import {
+  MinPriorityQueue,
+  PriorityQueue,
+} from "@datastructures-js/priority-queue"
+import {
+  parseRheaMessage,
+  parseRheaMessageBody,
+} from "../amqp/parse-message.js"
+import { c } from "rhea/typings/types.js"
+import { SessionCannotBeLockedError, SessionRequiredError } from "./errors.js"
 
-interface QueueConsumerDeliveryInfo<M> {
+interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
   delivery: Delivery
-  message: M
+  message: ScheduledMessage<M>
 }
 
 type MessageWithProperties<Base extends Message, MessageAnnotations> = Base & {
@@ -99,6 +109,10 @@ class MessageScheduler<M extends Message> {
 
 class DeliveryMap<T> {
   private _deliveries: Record<string, T> = {}
+
+  get deliveries() {
+    return Object.values(this._deliveries)
+  }
 
   get length() {
     return Object.keys(this._deliveries).length
@@ -170,8 +184,9 @@ class SequenceNumberFactory {
   }
 }
 
-interface MessageConsumer<M> {
+interface MessageConsumer<M extends TaggedMessage> {
   sender: Sender
+  session_id: string | undefined
   current_delivery: DeliveryMap<QueueConsumerDeliveryInfo<M>>
   listeners: Partial<Record<SenderEvents, (...args: any[]) => void>>
   schedule_for_deletion: boolean
@@ -187,11 +202,72 @@ type TaggedMessage = Message & {
 // TODO: include subscription model
 type QueueOrSubscription = QueueModel | SubscriptionModel
 
+type EnqueuedMessage<M extends TaggedMessage> = {
+  message: ScheduledMessage<M>
+  scheduled_at: Date
+}
+
+function compareScheduledMessages<M extends TaggedMessage>(
+  a: Pick<EnqueuedMessage<M>, "message">,
+  b: Pick<EnqueuedMessage<M>, "message">,
+) {
+  return serializedLong
+    .parse(a.message.message_annotations[Constants.sequenceNumber])
+    .compare(
+      serializedLong.parse(
+        b.message.message_annotations[Constants.sequenceNumber],
+      ),
+    )
+}
+
+class MessageConsumers<M extends TaggedMessage> {
+  private _consumers: Record<
+    string,
+    MessageConsumer<M> & { session_id?: string }
+  > = {}
+  private _consumer_by_session: Record<string, MessageConsumer<M>> = {}
+
+  get values() {
+    return Object.values(this._consumers)
+  }
+
+  get(sender: Pick<Sender, "name">) {
+    return this._consumers[sender.name]
+  }
+
+  add(consumer: MessageConsumer<M>) {
+    const session_id = consumer.session_id
+
+    if (session_id && this._consumer_by_session[session_id]) {
+      throw new SessionCannotBeLockedError(session_id)
+    }
+
+    this._consumers[consumer.sender.name] = {
+      ...consumer,
+      session_id: session_id,
+    }
+    if (session_id) {
+      this._consumer_by_session[session_id] = consumer
+    }
+  }
+
+  remove(sender: Pick<Sender, "name">) {
+    const val = this._consumers[sender.name]
+
+    if (val?.session_id) {
+      delete this._consumer_by_session[val.session_id]
+    }
+
+    delete this._consumers[sender.name]
+  }
+}
+
 export abstract class MessageSequence<M extends TaggedMessage> {
-  private _messages = new Deque<{
-    message: ScheduledMessage<M>
-    scheduled_at: Date
-  }>()
+  private _messages = new PriorityQueue<EnqueuedMessage<M>>(
+    compareScheduledMessages,
+  )
+  private _session_messages: Record<string, PriorityQueue<EnqueuedMessage<M>>> =
+    {}
 
   private deferred_messages = new Map<string, ScheduledMessage<M>>()
   private locked_messages = new Map<
@@ -211,7 +287,8 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
   private message_expiration_timeouts: Record<string, NodeJS.Timeout> = {}
 
-  private consumers: Record<string, MessageConsumer<ScheduledMessage<M>>> = {}
+  // private consumers: Record<string, MessageConsumer<ScheduledMessage<M>>> = {}
+  private consumers = new MessageConsumers<M>()
 
   private num_messages_transferred_to_dlq: number = 0
 
@@ -227,31 +304,50 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   abstract queue_type: "sb_queue" | "sb_subscription"
   abstract get queue(): QueueOrSubscription
 
-  private get fifo() {
-    return false
-  }
-
-  private pushMessage(message: ScheduledMessage<M>, place: "front" | "back") {
+  private pushMessage(message: ScheduledMessage<M>) {
     message.message_annotations[Constants.enqueuedTime] = new Date()
     message.message_annotations[Constants.messageState] ??=
       BrokerConstants.messageState.active
 
-    this._messages[place === "front" ? "pushFront" : "pushBack"]({
-      message,
-      scheduled_at: message.message_annotations[Constants.enqueuedTime],
-    })
+    const session_id = message.group_id
+
+    if (session_id) {
+      // TODO: make sure requiresSession is enabled
+
+      this._session_messages[session_id] ??= new PriorityQueue(
+        compareScheduledMessages,
+      )
+
+      this._session_messages[session_id].enqueue({
+        message,
+        scheduled_at: message.message_annotations[Constants.enqueuedTime],
+      })
+    } else {
+      // TODO: make sure requiresSession is disabled
+
+      this._messages.enqueue({
+        message,
+        scheduled_at: message.message_annotations[Constants.enqueuedTime],
+      })
+    }
   }
 
   private enqueue(...messages: ScheduledMessage<M>[]) {
-    messages.forEach((message) => this.pushMessage(message, "front"))
+    messages.forEach((message) => this.pushMessage(message))
   }
 
   private enqueueFront(...messages: ScheduledMessage<M>[]) {
-    messages.forEach((message) => this.pushMessage(message, "back"))
+    messages.forEach((message) => this.pushMessage(message))
   }
 
-  private dequeue() {
-    return this._messages.popBack()
+  private dequeue(session_id: string | undefined) {
+    try {
+      return (
+        session_id ? this._session_messages[session_id] : this._messages
+      )?.dequeue()
+    } catch {
+      return undefined
+    }
   }
 
   private refreshIdleTimeout() {
@@ -387,10 +483,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     this.tryFlush()
   }
 
-  private finishDelivery(
-    consumer: (typeof this.consumers)[number],
-    delivery: Delivery,
-  ) {
+  private finishDelivery(consumer: MessageConsumer<M>, delivery: Delivery) {
     consumer.current_delivery["finish"](delivery)
 
     if (
@@ -401,33 +494,35 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         { sender: consumer.sender.name },
         "Deleting consumer since all deliveries are completed",
       )
-      delete this.consumers[consumer.sender.name]
+      this.consumers.remove(consumer.sender)
     }
 
     this.refreshIdleTimeout()
   }
 
   private tryFlush() {
-    let consumer: MessageConsumer<ScheduledMessage<M>> | undefined
-
     const lockDurationMs = Temporal.Duration.from(
       this.queue.properties.lockDuration,
     ).total("milliseconds")
 
+    this.logger?.debug({ messages: this._messages.size() }, "Flushing messages")
+
     this.refreshIdleTimeout()
     this.propagateAccess()
 
-    while (
-      (consumer = Object.values(this.consumers).find(
-        (consumer) =>
-          consumer.sender.sendable() &&
-          consumer.sender.is_open() &&
-          consumer.sender.is_remote_open() &&
-          (!this.fifo || this.locked_messages.size === 0) &&
-          this._messages.size() > 0,
-      ))
-    ) {
-      const { message } = this.dequeue()!
+    for (const consumer of this.consumers.values.filter(
+      (consumer) =>
+        consumer.sender.sendable() &&
+        consumer.sender.is_open() &&
+        consumer.sender.is_remote_open() &&
+        consumer.sender.has_credit(),
+    )) {
+      const enqueued_message = this.dequeue(consumer.session_id)
+      if (!enqueued_message) {
+        continue
+      }
+
+      const { message } = enqueued_message
 
       // check expired
       if (
@@ -473,7 +568,8 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       message.message_annotations[Constants.lockedUntil] =
         +new Date().getTime() + lockDurationMs
 
-      // TODO: timeout
+      // TODO: set drained based on whether there are more messages to send
+
       const delivery = consumer.sender.send(message)
 
       message.delivery_count ??= 0
@@ -501,6 +597,12 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
     const queue = this.queue
 
+    const requiresSession = !!queue.properties.requiresSession
+
+    if (requiresSession && messages.some((m) => !m.group_id)) {
+      throw new SessionRequiredError()
+    }
+
     const requiresDuplicateDetection =
       queue._model === "sb_queue"
         ? "requiresDuplicateDetection" in queue.properties &&
@@ -516,8 +618,13 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     for (const message of messages) {
       if (requiresDuplicateDetection) {
         if (
-          this._messages
-            .toArray()
+          [
+            // TODO: more efficient implementation
+            ...this._messages.toArray(),
+            ...Object.values(this._session_messages).flatMap((q) =>
+              q.toArray(),
+            ),
+          ]
             .filter(
               ({ scheduled_at }) =>
                 Date.now() - scheduled_at.getTime() <= duplicateDetectionMs,
@@ -671,7 +778,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   renewLock(sender: SenderName, delivery_tag: DeliveryTag) {
-    const consumer = this.consumers[sender.name]
+    const consumer = this.consumers.get(sender)
     if (!consumer) {
       this.logger?.error(
         { sender: sender.name, consumer_ids: Object.keys(this.consumers) },
@@ -719,9 +826,13 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   updateConsumerDisposition(
     sender: SenderName,
     delivery_tag: DeliveryTag,
-    disposition: "completed" | "abandoned" | "rejected",
+    disposition: "completed" | "abandoned" | "rejected" | "suspended",
+    args?: {
+      deadLetterReason?: string
+      deadLetterDescription?: string
+    },
   ) {
-    const consumer = this.consumers[sender.name]
+    const consumer = this.consumers.get(sender)
     if (!consumer) {
       this.logger?.error(
         { sender: sender.name, consumer_ids: Object.keys(this.consumers) },
@@ -802,17 +913,25 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         }
         break
 
+      // TODO: figure out the difference between suspended and rejected
+      case "suspended":
       case "rejected":
         {
           const error = delivery.remote_state?.["error"]
 
-          if (error?.condition === Constants.deadLetterName) {
+          if (
+            error?.condition === Constants.deadLetterName ||
+            args?.deadLetterReason ||
+            args?.deadLetterDescription
+          ) {
             message.application_properties ??= {}
             message.application_properties[BrokerConstants.deadLetterReason] =
-              error.info["DeadLetterReason"]
+              args?.deadLetterReason ?? error.info["DeadLetterReason"]
             message.application_properties[
               BrokerConstants.deadLetterDescription
-            ] = error.info["DeadLetterErrorDescription"]
+            ] =
+              args?.deadLetterDescription ??
+              error.info["DeadLetterErrorDescription"]
           }
 
           this.finishDelivery(consumer, delivery)
@@ -831,19 +950,45 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   addConsumer(sender: Sender) {
+    const sessionId = sender.source.filter?.[Constants.sessionFilterName]
+
     this.logger?.debug(
-      { sender: sender.name, queue_id: this.queue_or_subscription_id },
+      {
+        sender: sender.name,
+        queue_id: this.queue_or_subscription_id,
+        sessionId,
+        properties: sender.properties,
+      },
       "Registering sender",
     )
 
     const listeners = {
       [SenderEvents.senderOpen]: (e: any) => {
         this.logger?.trace({ sender: e.sender.name }, "sender is open")
-        this.tryFlush()
+        // this.tryFlush()
       },
       [SenderEvents.sendable]: (e: any) => {
         this.logger?.debug("sender is sendable")
         this.tryFlush()
+      },
+      [SenderEvents.senderDraining]: (e: {
+        sender: Sender
+        session: Session
+      }) => {
+        this.logger?.debug("sender is draining")
+        this.tryFlush()
+
+        e.sender.set_drained(true)
+        // e.session._write_flow(e.sender)
+      },
+      [SenderEvents.senderClose]: (e: { sender: Sender }) => {
+        this.logger?.debug("sender is closed")
+        this.removeConsumer(e.sender)
+        // this.tryFlush()
+      },
+      [SenderEvents.senderFlow]: (e: any) => {
+        this.logger?.debug("sender in flow")
+        // this.tryFlush()
       },
       [SenderEvents.accepted]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug("sender accepted message")
@@ -865,7 +1010,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       [SenderEvents.settled]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug("sender settled")
 
-        this.tryFlush()
+        // this.tryFlush()
       },
       [SenderEvents.rejected]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug(Object.keys(e), "sender rejected message")
@@ -878,15 +1023,32 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       },
     }
 
-    Object.entries(listeners).forEach((args) => sender.addListener(...args))
-
-    this.consumers[sender.name] = {
+    this.consumers.add({
       sender,
       listeners,
       current_delivery: new DeliveryMap(this.logger),
       schedule_for_deletion: false,
+      session_id: sessionId,
+    })
+
+    sender.set_source({
+      ...sender.source,
+      filter: {
+        [Constants.sessionFilterName]: sessionId,
+      },
+    })
+    ;(sender as any).local.attach.properties = {
+      // TODO: support session locking
+      "com.microsoft:locked-until-utc": unserializedLongToArrayLike.parse(
+        Long.fromNumber(Date.now() + 100000)
+          .mul(10000)
+          .add(621355968000000000),
+      ),
     }
-    this.tryFlush()
+
+    Object.entries(listeners).forEach((args) => sender.addListener(...args))
+
+    // this.tryFlush()
 
     this.propagateAccess()
   }
@@ -894,7 +1056,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   removeConsumer(sender: Sender) {
     this.logger?.debug({ sender: sender.name }, "Removing sender")
 
-    const consumer = this.consumers[sender.name]
+    const consumer = this.consumers.get(sender)
 
     if (!consumer) {
       this.logger?.warn({ sender: sender.name }, "Could not find consumer")
@@ -910,7 +1072,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         { sender: consumer.sender.name },
         "Removing consumer from queue",
       )
-      delete this.consumers[sender.name]
+      this.consumers.remove(sender)
     } else {
       this.logger?.debug(
         { sender: consumer.sender.name },
@@ -921,7 +1083,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   removeConsumers(where: (consumer: Sender) => boolean) {
-    for (const consumer of Object.values(this.consumers)) {
+    for (const consumer of Object.values(this.consumers.values)) {
       if (where(consumer.sender)) {
         this.removeConsumer(consumer.sender)
       }
@@ -929,6 +1091,8 @@ export abstract class MessageSequence<M extends TaggedMessage> {
   }
 
   close() {
+    this.logger?.debug("Closing message sequence")
+
     this.message_scheduler.close()
     Object.values(this.message_expiration_timeouts).forEach(clearTimeout)
 

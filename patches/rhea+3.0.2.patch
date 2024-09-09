@@ -1,0 +1,13 @@
+diff --git a/node_modules/rhea/lib/link.js b/node_modules/rhea/lib/link.js
+index 9d1ed84..c9b46aa 100644
+--- a/node_modules/rhea/lib/link.js
++++ b/node_modules/rhea/lib/link.js
+@@ -288,7 +288,7 @@ var Sender = function (session, name, local_handle, opts) {
+ Sender.prototype = Object.create(link);
+ Sender.prototype.constructor = Sender;
+ Sender.prototype._get_drain = function () {
+-    if (this._draining && this._drained && this.credit) {
++    if (this._draining && this._drained) {
+         while (this.credit) {
+             ++this.delivery_count;
+             --this.credit;
