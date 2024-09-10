@@ -9,8 +9,8 @@ import {
   createWithEdgeSpec,
   makeRequestAgainstEdgeSpec,
   HTTPMethods,
-  Middleware,
-  EdgeSpecRouteMap,
+  type Middleware,
+  type EdgeSpecRouteMap,
 } from "edgespec"
 import { getRouteMatcher } from "next-route-matcher"
 import {
@@ -50,20 +50,21 @@ const getModelSchemaKeys = <M extends AnyModelSchema>(
 type SpecRelationalIds<
   Root extends ModelSpecs<any>,
   Spec extends ModelSpec<any, keyof Root>,
-> = Spec["hasOne"] extends (keyof Root & string)[]
-  ? {
-      [K in Spec["hasOne"][number] as IdFields<K>]: z.output<
-        SchemaShape<Root[K]["schema"]>[Root[K]["primaryKey"]]
-      >
-    }
-  : {}
+> =
+  Spec["hasOne"] extends Array<keyof Root & string>
+    ? {
+        [K in Spec["hasOne"][number] as IdFields<K>]: z.output<
+          SchemaShape<Root[K]["schema"]>[Root[K]["primaryKey"]]
+        >
+      }
+    : {}
 
 type ReverseHasOne<
   Root extends ModelSpecs<any>,
   ModelName extends keyof Root & string,
   ModelNames extends keyof Root & string = keyof Root & string,
 > = ModelNames extends keyof Root & string
-  ? Root[ModelNames]["hasOne"] extends (keyof Root & string)[]
+  ? Root[ModelNames]["hasOne"] extends Array<keyof Root & string>
     ? Root[ModelNames]["hasOne"][number] extends ModelName
       ? ModelNames
       : never
@@ -74,7 +75,7 @@ type SpecRelationalJoin<
   Root extends ModelSpecs<any>,
   Spec extends ModelSpec<any, keyof Root>,
   ModelName extends keyof Root & string,
-> = (Spec["hasOne"] extends (keyof Root & string)[]
+> = (Spec["hasOne"] extends Array<keyof Root & string>
   ? {
       [K in Spec["hasOne"][number]]: () => SpecWithRelationalJoin<
         Root,
@@ -83,10 +84,9 @@ type SpecRelationalJoin<
       >
     }
   : {}) & {
-  [K in ReverseHasOne<
-    Root,
-    ModelName
-  > as Pluralized<K>]: () => SpecWithRelationalJoin<Root, Root[K], K>[]
+  [K in ReverseHasOne<Root, ModelName> as Pluralized<K>]: () => Array<
+    SpecWithRelationalJoin<Root, Root[K], K>
+  >
 }
 
 type SpecWhereCheck<
@@ -160,7 +160,7 @@ class Model<
   Spec extends ModelSpec<any, keyof Root & string>,
   ModelName extends keyof Root & string,
 > {
-  private trigger_fns: ModelTriggers<Root, ModelName>[] = []
+  private trigger_fns: Array<ModelTriggers<Root, ModelName>> = []
 
   readonly triggers: ModelTriggers<Root, ModelName> = {
     change: (...args) => {
@@ -293,9 +293,10 @@ class ModelSelectBuilder<
   Output = SpecWithRelationalJoin<Root, Spec, ModelName> &
     SpecWithRelationalId<Root, Spec>,
 > {
-  whereRules: ((val: SpecWhereCheck<Root, Spec, ModelName>) => boolean)[] = []
+  whereRules: Array<(val: SpecWhereCheck<Root, Spec, ModelName>) => boolean> =
+    []
 
-  constructor(private root: Model<Root, Spec, any>) {}
+  constructor(private readonly root: Model<Root, Spec, any>) {}
 
   where<F extends SpecWhereCheck<Root, Spec, ModelName>>(
     predicate: (val: SpecWhereCheck<Root, Spec, ModelName>) => val is F,
@@ -310,9 +311,11 @@ class ModelSelectBuilder<
     return this
   }
 
-  updates: ((
-    val: SpecWhereCheck<Root, Spec, ModelName>,
-  ) => Partial<SpecWithRelationalId<Root, Spec>>)[] = []
+  updates: Array<
+    (
+      val: SpecWhereCheck<Root, Spec, ModelName>,
+    ) => Partial<SpecWithRelationalId<Root, Spec>>
+  > = []
 
   set(
     updateFn:
@@ -343,7 +346,7 @@ class ModelSelectBuilder<
       for (const match of getMatches()) {
         const id = match[this.root["spec"].primaryKey as keyof Output]
 
-        let old_val: any = this.root["_store"][id] ?? null
+        const old_val: any = this.root["_store"][id] ?? null
         let new_val: any = null
 
         if (this.updates.length > 0) {
@@ -414,11 +417,11 @@ class ModelInsertBuilder<
   Spec extends ModelSpec<any, any>,
   Root extends ModelSpecs<any>,
 > {
-  changes: SpecWithRelationalId<Root, Spec>[] = []
+  changes: Array<SpecWithRelationalId<Root, Spec>> = []
 
   on_conflict: "mergeall" | "donothing" | undefined
 
-  constructor(private root: Model<Root, Spec, any>) {}
+  constructor(private readonly root: Model<Root, Spec, any>) {}
 
   get spec() {
     return this.root["spec"]
@@ -438,7 +441,7 @@ class ModelInsertBuilder<
   values(
     vals:
       | InputSpecWithRelationalId<Root, Spec>
-      | InputSpecWithRelationalId<Root, Spec>[],
+      | Array<InputSpecWithRelationalId<Root, Spec>>,
   ): this {
     const vals_array = Array.isArray(vals) ? vals : [vals]
     this.changes.push(
@@ -565,7 +568,7 @@ type Store<MS extends ModelSpecs<any>> = {
 }
 
 export const getStore = <const MS extends ModelSpecs<any>>(modelSpecs: MS) => {
-  let models: Store<MS> = {} as any
+  const models: Store<MS> = {} as any
 
   Object.assign(
     models,
@@ -606,7 +609,7 @@ export function createIntegration<
     next,
   ) => {
     ctx.store = models
-    return next(req, ctx)
+    return await next(req, ctx)
   }
 
   const createRouteFn = createWithEdgeSpec({
@@ -667,7 +670,7 @@ export class IntegrationBuilder<
   constructor(
     private readonly createWithRouteFn: CreateWithRouteSpecFn<GS>,
     private routeMap: EdgeSpecRouteMap<GS>,
-    private store: IntegrationStore<IntegrationBuilder<GS, IS>>,
+    private readonly store: IntegrationStore<IntegrationBuilder<GS, IS>>,
     private readonly options: {
       cleanup: () => Promise<void>
       readonly integrationSpec: IS
@@ -705,7 +708,7 @@ export class IntegrationBuilder<
       routeMatcher: getRouteMatcher(Object.keys(this.routeMap)),
       routeMapWithHandlers: this.routeMap,
       makeRequest: async (req, options) =>
-        makeRequestAgainstEdgeSpec(edgeSpecRouteBundle, options)(req),
+        await makeRequestAgainstEdgeSpec(edgeSpecRouteBundle, options)(req),
     }
 
     // to make request:

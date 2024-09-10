@@ -1,9 +1,9 @@
 import {
-  EdgeSpecCustomResponse,
-  EdgeSpecJsonResponse,
-  EdgeSpecMultiPartFormDataResponse,
+  type EdgeSpecCustomResponse,
+  type EdgeSpecJsonResponse,
+  type EdgeSpecMultiPartFormDataResponse,
   EdgeSpecResponse,
-  SerializableToResponse,
+  type SerializableToResponse,
 } from "./web-handler.js"
 
 export type ResponseTypeToContext<

@@ -27,5 +27,5 @@
       "lib/*": ["./src/lib/*"]
     }
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "./vitest.config.ts"]
 }

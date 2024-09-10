@@ -7,11 +7,11 @@ import type { InferRecordKey } from "./types/util.js"
 import {
   EdgeSpecMultiPartFormDataResponse,
   EdgeSpecJsonResponse,
-  EdgeSpecRequest,
+  type EdgeSpecRequest,
   EdgeSpecResponse,
-  EdgeSpecRouteFn,
+  type EdgeSpecRouteFn,
   EdgeSpecCustomResponse,
-  SerializableToResponse,
+  type SerializableToResponse,
 } from "./types/web-handler.js"
 import { withMethods } from "./middleware/with-methods.js"
 import { withInputValidation } from "./middleware/with-input-validation.js"
@@ -161,7 +161,7 @@ export async function wrapMiddlewares(
   return await middlewares.reduceRight(
     (next, middleware) => {
       return async (req, ctx) => {
-        return middleware(req, ctx, next as any)
+        return await middleware(req, ctx, next as any)
       }
     },
     async (request: EdgeSpecRequest, ctx: ResponseTypeToContext<Response>) =>
@@ -212,18 +212,18 @@ function firstAuthMiddlewareThatSucceeds(
 ): Middleware {
   return async (req, ctx, next) => {
     if (authMiddlewares.length === 0) {
-      return next(req, ctx)
+      return await next(req, ctx)
     }
 
-    let errors: unknown[] = []
+    const errors: unknown[] = []
     let didAuthMiddlewareThrow = true
 
     for (const middleware of authMiddlewares) {
       try {
-        return await middleware(req, ctx, (...args) => {
+        return await middleware(req, ctx, async (...args) => {
           // Otherwise errors unrelated to auth thrown by built-in middleware (withMethods, withValidation) will be caught here
           didAuthMiddlewareThrow = false
-          return next(...args)
+          return await next(...args)
         })
       } catch (error) {
         if (didAuthMiddlewareThrow) {

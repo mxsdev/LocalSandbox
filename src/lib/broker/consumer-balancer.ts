@@ -1,16 +1,16 @@
 import type { Sender } from "rhea"
 import {
   BrokerQueue,
-  BrokerSubscription,
+  type BrokerSubscription,
   BrokerTopic,
-  MessageSequence,
+  type MessageSequence,
 } from "./queue.js"
-import { Logger } from "pino"
-import { ParsedTypedRheaMessageWithId } from "../amqp/parse-message.js"
-import Long from "long"
+import type { Logger } from "pino"
+import type { ParsedTypedRheaMessageWithId } from "../amqp/parse-message.js"
+import type Long from "long"
 import { Constants } from "@azure/core-amqp"
-import { BufferLikeEncodedLong } from "../util/long.js"
-import {
+import type { BufferLikeEncodedLong } from "../util/long.js"
+import type {
   _QualifiedQueueId,
   BrokerStore,
   QualifiedMessageDestinationId,
@@ -32,7 +32,7 @@ type Subscription = BrokerSubscription<ParsedTypedRheaMessageWithId>
 export class BrokerConsumerBalancer {
   private _queues: Record<string, Queue> = {}
   private _topics: Record<string, Topic> = {}
-  private _subscriptions: Record<string, Subscription> = {}
+  private readonly _subscriptions: Record<string, Subscription> = {}
 
   constructor(
     private readonly store: BrokerStore,
@@ -66,7 +66,9 @@ export class BrokerConsumerBalancer {
   }
 
   removeConsumers(where: (consumer: Sender) => boolean) {
-    Object.values(this._queues).forEach((q) => q.removeConsumers(where))
+    Object.values(this._queues).forEach((q) => {
+      q.removeConsumers(where)
+    })
   }
 
   renewLock(
@@ -271,9 +273,9 @@ export class BrokerConsumerBalancer {
   }
 
   private removeSenderFromAll(sender: Sender) {
-    Object.values(this._queues).forEach((q) =>
-      q.removeConsumers((s) => s.name === sender.name),
-    )
+    Object.values(this._queues).forEach((q) => {
+      q.removeConsumers((s) => s.name === sender.name)
+    })
   }
 
   close() {

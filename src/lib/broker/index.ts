@@ -3,7 +3,7 @@ import {
   ConnectionContextBase,
   Constants,
 } from "@azure/core-amqp"
-import { ListenOptions } from "net"
+import type { ListenOptions } from "net"
 import {
   Connection,
   ConnectionEvents,

@@ -1,6 +1,6 @@
 import pino, { type DestinationStream } from "pino"
-const { default: createLogger } = pino
 import pretty from "pino-pretty"
+const { default: createLogger } = pino
 
 interface LoggerOptions {
   app?: string
@@ -17,7 +17,7 @@ export const getLogger = ({
     // sync: true,
     // colorize: colorette.isColorSupported, // --colorize
     colorize: true,
-    colorizeObjects: true, //--colorizeObjects
+    colorizeObjects: true, // --colorizeObjects
     // crlf: false, // --crlf
     errorLikeObjectKeys: ["err", "error"], // --errorLikeObjectKeys (not required to match custom errorKey with pino >=8.21.0)
 
@@ -54,7 +54,7 @@ export const getLogger = ({
     // customPrettifiers: {},
   })
 
-  let final_stream: DestinationStream = pretty_stream
+  const final_stream: DestinationStream = pretty_stream
 
   //   if (stream) {
   //     final_stream = pretty_stream.pipe(stream)

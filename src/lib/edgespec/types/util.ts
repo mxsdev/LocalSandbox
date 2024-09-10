@@ -21,11 +21,11 @@ export type InferRecordKey<R extends Record<any, any>> =
  * ```
  */
 export type MapArray<
-  Map extends { [index: string | number | symbol]: any },
-  Arr extends readonly (keyof Map)[],
+  Map extends Record<string | number | symbol, any>,
+  Arr extends ReadonlyArray<keyof Map>,
 > = Arr extends readonly [
   infer K extends keyof Map,
-  ...infer Remaining extends (keyof Map)[],
+  ...infer Remaining extends Array<keyof Map>,
 ]
   ? readonly [Map[K], ...MapArray<Map, Remaining>]
   : readonly []

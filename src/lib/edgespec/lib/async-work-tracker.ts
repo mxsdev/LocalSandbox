@@ -12,7 +12,7 @@ export class AsyncWorkTracker<Result> extends EventEmitter {
    */
   async waitForResult(): Promise<Result> {
     if (this.state === "pending" || !this.lastResult) {
-      return new Promise<Result>((resolve) => {
+      return await new Promise<Result>((resolve) => {
         this.once("result", resolve)
       })
     }

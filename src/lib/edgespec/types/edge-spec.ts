@@ -3,8 +3,8 @@ import {
   createEdgeSpecRequest,
   type EdgeSpecRouteFn,
   type EdgeSpecRouteParams,
-  EdgeSpecRequest,
-  HTTPMethods,
+  type EdgeSpecRequest,
+  type HTTPMethods,
 } from "./web-handler.js"
 
 import type { ReadonlyDeep } from "type-fest"
@@ -17,7 +17,10 @@ import {
   InputValidationError,
   MethodNotAllowedError,
 } from "edgespec/middleware/http-exceptions.js"
-import { GetAuthMiddlewaresFromGlobalSpec, GlobalSpec } from "./global-spec.js"
+import type {
+  GetAuthMiddlewaresFromGlobalSpec,
+  GlobalSpec,
+} from "./global-spec.js"
 
 export type EdgeSpecRouteMatcher = (pathname: string) =>
   | {
@@ -29,10 +32,10 @@ export type EdgeSpecRouteMatcher = (pathname: string) =>
 
 export type EdgeSpecRouteMap<GS extends GlobalSpec = any> = Record<
   string,
-  {
+  Array<{
     routeSpec: RouteSpec<GetAuthMiddlewaresFromGlobalSpec<GS>>
     routeFn: EdgeSpecRouteFn
-  }[]
+  }>
 >
 
 export interface EdgeSpecOptions {
@@ -70,7 +73,7 @@ export type EdgeSpecRouteBundle = ReadonlyDeep<
 >
 
 export type EdgeSpecAdapter<
-  Options extends Array<unknown> = [],
+  Options extends unknown[] = [],
   ReturnValue = void,
 > = (edgeSpec: EdgeSpecRouteBundle, ...options: Options) => ReturnValue
 
@@ -119,13 +122,13 @@ export function makeRequestAgainstEdgeSpec(
 
         const wildcardRouteParameter = wildcardRouteParameters[0]
 
-        pathname = `/${(wildcardRouteParameter as string[]).join("/")}`
+        pathname = `/${wildcardRouteParameter!.join("/")}`
       }
     }
 
     const { matchedRoute, routeParams } = routeMatcher(pathname) ?? {}
 
-    let routes = matchedRoute && routeMapWithHandlers[matchedRoute]
+    const routes = matchedRoute && routeMapWithHandlers[matchedRoute]
 
     const edgeSpecRequest = createEdgeSpecRequest(request, {
       edgeSpec,
@@ -136,10 +139,10 @@ export function makeRequestAgainstEdgeSpec(
       return await handle404(edgeSpecRequest, getDefaultContext())
     }
 
-    return wrapMiddlewares(
+    return await wrapMiddlewares(
       options.middleware ?? [],
       async (req: EdgeSpecRequest, ctx) => {
-        let last_error: Error | undefined = undefined
+        let last_error: Error | undefined
 
         for (const route of routes.filter((v) =>
           v.routeSpec.methods.includes(req.method as HTTPMethods),

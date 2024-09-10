@@ -1,5 +1,5 @@
-import { Middleware } from "edgespec"
-import { Logger } from "pino"
+import type { Middleware } from "edgespec"
+import type { Logger } from "pino"
 
 export const withLogger =
   (logger: Logger): Middleware<{}, { logger: Logger }> =>

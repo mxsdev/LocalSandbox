@@ -14,7 +14,7 @@ fixturedTest(
 
     process.env["LOCALSANDBOX_NO_ENFORCE_SB_AUTO_DELETE_IDLE_MINIMUM"] = "true"
     onTestFinished(() => {
-      delete process.env["LOCALSANDBOX_NO_ENFORCE_SB_AUTO_DELETE_IDLE_MINIMUM"]
+      delete process.env.LOCALSANDBOX_NO_ENFORCE_SB_AUTO_DELETE_IDLE_MINIMUM
     })
 
     const queue = await createQueue({

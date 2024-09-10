@@ -1,4 +1,4 @@
-import { EdgeSpecRouteBundle } from "./types/index.js"
+import type { EdgeSpecRouteBundle } from "./types/index.js"
 
 /**
  * Loads a file created by `edgespec bundle` and returns the default export.

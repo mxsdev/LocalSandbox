@@ -1,5 +1,5 @@
-import { Logger, P } from "pino"
-import {
+import { type Logger, P } from "pino"
+import type {
   _QualifiedQueueId,
   _QualifiedSubscriptionId,
   _QualifiedTopicId,

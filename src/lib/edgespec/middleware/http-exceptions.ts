@@ -1,5 +1,5 @@
 import { formatZodError } from "edgespec/lib/format-zod-error.js"
-import { z } from "zod"
+import type { z } from "zod"
 
 export interface HttpException {
   status: number

@@ -3,7 +3,7 @@ import { azure_routes } from "./routes.js"
 import "./resource-groups.js"
 import "./susbcriptions.js"
 import "./service-bus/index.js"
-import { AzureServiceBusBroker } from "../../broker/broker.js"
+import type { AzureServiceBusBroker } from "../../broker/broker.js"
 
 interface AzureIntegrationConfig {
   broker: AzureServiceBusBroker
@@ -16,8 +16,8 @@ export const createAzureIntegration: IntegrationFactory<
 
   const build = azure_routes.build()
 
-  return (req, opts) =>
-    build.edgeSpecRouteBundle.makeRequest(req, {
+  return async (req, opts) =>
+    await build.edgeSpecRouteBundle.makeRequest(req, {
       ...opts,
       middleware: [broker.middleware, ...(opts?.middleware ?? [])],
     })

@@ -1,6 +1,6 @@
 import { promisify } from "node:util"
-import { Server } from "http"
-import { Logger } from "pino"
+import type { Server } from "http"
+import type { Logger } from "pino"
 import rhea, {
   type Connection,
   type Container,
@@ -48,8 +48,8 @@ export interface BrokerConnectionEvent {
 }
 
 export abstract class BrokerServer {
-  private container: Container
-  private server?: Server
+  private readonly container: Container
+  private readonly server?: Server
 
   protected opts: BrokerServerOpts & Required<Pick<BrokerServerOpts, "port">>
 
@@ -76,6 +76,7 @@ export abstract class BrokerServer {
   protected async onConnectionOpen(
     event: BrokerConnectionEvent,
   ): Promise<void> {}
+
   protected async onConnectionClose(
     event: BrokerConnectionEvent,
   ): Promise<void> {}
@@ -94,36 +95,36 @@ export abstract class BrokerServer {
     // this.container.on("connection_open", (e) => {})
     // this.container.on("connection_close", (e) => {})
 
-    this.container.on("message", (e) => {
+    this.container.on("message", async (e) => {
       this.logger?.trace({ receiver: e.receiver.name }, "Received AMQP message")
-      return this.onMessage(e)
+      await this.onMessage(e)
     })
 
-    this.container.on("sender_open", (e) => {
+    this.container.on("sender_open", async (e) => {
       this.logger?.trace("AMQP Sender Open")
-      return this.onSenderOpen(e)
+      await this.onSenderOpen(e)
     })
-    this.container.on("sender_close", (e) => {
+    this.container.on("sender_close", async (e) => {
       this.logger?.trace("AMQP Sender Closed")
-      return this.onSenderClose(e)
+      await this.onSenderClose(e)
     })
 
-    this.container.on("receiver_open", (e) => {
+    this.container.on("receiver_open", async (e) => {
       this.logger?.trace("AMQP Receiver Open")
-      return this.onReceiverOpen(e)
+      await this.onReceiverOpen(e)
     })
-    this.container.on("receiver_close", (e) => {
+    this.container.on("receiver_close", async (e) => {
       this.logger?.trace("AMQP Receiver Closed")
-      return this.onReceiverClose(e)
+      await this.onReceiverClose(e)
     })
 
-    this.container.on("connection_open", (e) => {
+    this.container.on("connection_open", async (e) => {
       this.logger?.trace("AMQP Receiver Open")
-      return this.onConnectionOpen(e)
+      await this.onConnectionOpen(e)
     })
-    this.container.on("connection_close", (e) => {
+    this.container.on("connection_close", async (e) => {
       this.logger?.trace("AMQP Receiver Closed")
-      return this.onConnectionClose(e)
+      await this.onConnectionClose(e)
     })
   }
 

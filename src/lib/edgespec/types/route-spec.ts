@@ -16,7 +16,7 @@ import type {
   HTTPMethods,
   EdgeSpecRouteParams,
 } from "./web-handler.js"
-import { ResponseTypeToContext } from "./context.js"
+import type { ResponseTypeToContext } from "./context.js"
 
 export type RouteSpec<AuthMiddlewares extends string> = {
   methods: readonly HTTPMethods[]
@@ -150,7 +150,7 @@ export type CreateWithRouteSpecFn<GS extends GlobalSpec> = <
   const RS extends RouteSpec<GetAuthMiddlewaresFromGlobalSpec<GS>>,
 >(
   routeSpec: RS | RS[],
-) => (route: EdgeSpecRouteFnFromSpecs<GS, RS>) => {
+) => (route: EdgeSpecRouteFnFromSpecs<GS, RS>) => Array<{
   routeFn: EdgeSpecRouteFn
   routeSpec: RS
-}[]
+}>

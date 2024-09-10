@@ -4,7 +4,31 @@
   "overrides": [
     {
       "files": ["*.ts", "*.tsx"],
-      "extends": ["standard-with-typescript", "prettier"]
+      "extends": ["standard-with-typescript", "prettier"],
+      "rules": {
+        "@typescript-eslint/consistent-type-definitions": "off",
+        "@typescript-eslint/explicit-function-return-type": "off",
+        "@typescript-eslint/naming-convention": "off",
+        "@typescript-eslint/no-import-type-side-effects": "error",
+        "@typescript-eslint/strict-boolean-expressions": "off",
+        "@typescript-eslint/no-non-null-assertion": "off",
+        "@typescript-eslint/ban-types": "off",
+        "@typescript-eslint/no-unnecessary-type-assertion": "off",
+        "@typescript-eslint/dot-notation": "off",
+        "@typescript-eslint/no-unsafe-argument": "off",
+        "@typescript-eslint/prefer-nullish-coalescing": "off",
+        "@typescript-eslint/no-dynamic-delete": "off",
+        "@typescript-eslint/ban-ts-comment": "off",
+        "no-lone-blocks": "off"
+      },
+      "overrides": [
+        {
+          "files": ["./vitest.config.ts"],
+          "rules": {
+            "@typescript-eslint/triple-slash-reference": "off"
+          }
+        }
+      ]
     }
   ]
 }

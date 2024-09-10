@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "format": "eslint --ignore-path .gitignore --fix .",
     "preformat": "prettier --write --ignore-path .gitignore .",
-    "lint": "eslint --ignore-path .gitignore .",
+    "lint": "eslint --ignore-path .gitignore --fix .",
     "prelint": "prettier --check --ignore-path .gitignore ."
   },
   "keywords": [],
