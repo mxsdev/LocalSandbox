@@ -7,7 +7,6 @@ import rhea, {
   type Delivery,
   type Sender,
 } from "rhea"
-// import message from "../node_modules/rhea/lib/message.js"
 import { TEST_CERT, TEST_PK } from "../src/lib/tls/index.js"
 import {
   parseBatchOrMessage,

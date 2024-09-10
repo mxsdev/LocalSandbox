@@ -7,7 +7,6 @@
   "scripts": {
     "test": "vitest",
     "test:e2e": "cross-env TEST_AZURE_E2E=true vitest --testTimeout=20000 --dir=./test/parity",
-    "dev": "tsx --watch ./src/entrypoint/index.ts",
     "generate:azure": "tsx ./scripts/generate-azure-schema.ts",
     "postinstall": "patch-package",
     "typecheck": "tsc --noEmit",

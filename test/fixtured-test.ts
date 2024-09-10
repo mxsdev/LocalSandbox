@@ -14,11 +14,6 @@ import type { ServiceClientOptions } from "@azure/core-client"
 import { LocalSandboxAzureCredential } from "lib/service-client/local-sandbox-azure-credential.js"
 import { ResourceManagementClient } from "@azure/arm-resources"
 import type { Logger } from "pino"
-import {
-  createNewStore,
-  type IntegrationStore,
-} from "lib/integration/integration.js"
-import { azure_routes } from "lib/integration/azure/routes.js"
 import { getTestLogger } from "./get-test-logger.js"
 import {
   ServiceBusClient,
@@ -70,8 +65,6 @@ const getAzureContext = (
   env: TestEnv,
 ) => {
   const e2e_config = env.azure
-
-  const store = azure_routes["store"]
 
   const port = testPort
   const subscriptionId = e2e_config?.AZURE_SUBSCRIPTION_ID ?? randomUUID()
@@ -185,7 +178,6 @@ const getAzureContext = (
     resource_client,
     location,
     sb_endpoint: sb_local_endpoint,
-    store,
 
     getSbClient: (
       { subscription_id }: { subscription_id: string },
@@ -372,7 +364,6 @@ export interface TestContext {
   expectCorrelatedTime: (actual: Date, expected: Date) => void
   azure_rg: Awaited<ReturnType<AzureContext["rg"]>>
   azure_sb_namespace: Awaited<ReturnType<AzureContext["sb"]["namespace"]>>
-  azure_store: IntegrationStore<typeof azure_routes>
   azure_queue: Awaited<ReturnType<typeof getAzureContextWithQueueFixtures>>
   logger: (app?: string) => Logger
 }
@@ -412,9 +403,6 @@ export const fixturedTest = test.extend<TestContext>({
 
       return logger
     })
-  },
-  azure_store: async ({}, use) => {
-    await use(createNewStore(azure_routes["store"]))
   },
   azure_queue: async ({ azure, onTestFinished }, use) => {
     await use(await getAzureContextWithQueueFixtures(azure, onTestFinished))

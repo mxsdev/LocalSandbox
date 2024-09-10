@@ -12,6 +12,7 @@ import { AzureServiceBusBroker } from "../broker/broker.js"
 import { azure_routes } from "../integration/azure/routes.js"
 import { withLogger } from "../logger/with-logger.js"
 import { getTestLogger } from "test/get-test-logger.js"
+import type { BrokerServer } from "lib/broker/server.js"
 
 const routeLoggingMiddleware: Middleware<{}, { logger: Logger }> = async (
   req,
@@ -34,7 +35,7 @@ const routeLoggingMiddleware: Middleware<{}, { logger: Logger }> = async (
   return res
 }
 
-export const withRouteSpec = createWithEdgeSpec({
+const withRouteSpec = createWithEdgeSpec({
   authMiddleware: {},
   beforeAuthMiddleware: [
     routeLoggingMiddleware,
@@ -42,27 +43,41 @@ export const withRouteSpec = createWithEdgeSpec({
   ],
 })
 
-const amqp_logger = getTestLogger("amqp")
+export const createApiBundle = () => {
+  const amqp_logger = getTestLogger("amqp")
 
-export const azure_service_bus_broker = new AzureServiceBusBroker(
-  azure_routes["store"],
-  { logger: amqp_logger.logger, cleanup: amqp_logger.cleanup },
-)
-const azure_integration = createAzureIntegration({
-  broker: azure_service_bus_broker,
-})
+  const store_bundle = azure_routes.createStoreBundle()
 
-export const routes: EdgeSpecRouteMap = {
-  "/azure/[...params]": withRouteSpec({
-    methods: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
-    routeParams: z.object({
-      params: z.string().array(),
+  const azure_service_bus_broker = new AzureServiceBusBroker(
+    store_bundle.store,
+    {
+      logger: amqp_logger.logger,
+      cleanup: amqp_logger.cleanup,
+    },
+  )
+
+  const azure_integration = createAzureIntegration({
+    broker: azure_service_bus_broker,
+    store_bundle,
+  })
+
+  const routes: EdgeSpecRouteMap = {
+    "/azure/[...params]": withRouteSpec({
+      methods: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
+      routeParams: z.object({
+        params: z.string().array(),
+      }),
+    })(async (req, ctx) => {
+      return await azure_integration(req, {
+        middleware: [withLogger(ctx.logger.child({}))],
+      })
     }),
-  })(async (req, ctx) => {
-    return await azure_integration(req, {
-      middleware: [withLogger(ctx.logger.child({}))],
-    })
-  }),
-}
+  }
 
-export const bundle = routeBundleFromRouteMap(routes)
+  const amqp_server: BrokerServer = azure_service_bus_broker
+
+  return {
+    bundle: routeBundleFromRouteMap(routes),
+    amqp_server,
+  }
+}

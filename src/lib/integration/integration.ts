@@ -592,12 +592,25 @@ export function createIntegration<
 >(integrationSpec: IntegrationSpec<MS, GS>) {
   const { models: modelSpecs, globalSpec } = integrationSpec
 
-  const models = getStore(modelSpecs)
+  const createStore = () => {
+    const store = getStore(modelSpecs)
 
-  for (const [modelName, trigger] of Object.entries(
-    integrationSpec.triggers ?? {},
-  )) {
-    models[modelName]!.registerTrigger(trigger)
+    for (const [modelName, trigger] of Object.entries(
+      integrationSpec.triggers ?? {},
+    )) {
+      store[modelName]!.registerTrigger(trigger)
+    }
+
+    const storeMiddleware: Middleware<{}, { store: Store<MS> }> = async (
+      req,
+      ctx,
+      next,
+    ) => {
+      ctx.store = store
+      return await next(req, ctx)
+    }
+
+    return { store, middleware: storeMiddleware }
   }
 
   const storeMiddleware: Middleware<{}, { store: Store<MS> }> = async (
@@ -605,7 +618,10 @@ export function createIntegration<
     ctx,
     next,
   ) => {
-    ctx.store = models
+    if (!ctx.store) {
+      throw new Error("Store not supplied")
+    }
+
     return await next(req, ctx)
   }
 
@@ -625,7 +641,7 @@ export function createIntegration<
     ]
   })
 
-  return new IntegrationBuilder(createRouteFn, {}, models, {
+  return new IntegrationBuilder(createRouteFn, {}, createStore, {
     cleanup: async () => {
       // db.close()
     },
@@ -667,7 +683,13 @@ export class IntegrationBuilder<
   constructor(
     private readonly createWithRouteFn: CreateWithRouteSpecFn<GS>,
     private routeMap: EdgeSpecRouteMap<GS>,
-    private readonly store: IntegrationStore<IntegrationBuilder<GS, IS>>,
+    public readonly createStoreBundle: () => {
+      store: IntegrationStore<IntegrationBuilder<GS, IS>>
+      middleware: Middleware<
+        {},
+        { store: IntegrationStore<IntegrationBuilder<GS, IS>> }
+      >
+    },
     private readonly options: {
       cleanup: () => Promise<void>
       readonly integrationSpec: IS

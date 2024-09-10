@@ -4,7 +4,7 @@ import { serveHTTPS } from "lib/api/serve.js"
 import type http from "node:http"
 import util from "node:util"
 import type { AzureServiceBusBroker } from "lib/broker/broker.js"
-import { azure_service_bus_broker } from "lib/api/index.js"
+import { createApiBundle } from "lib/api/index.js"
 
 let server: http.Server | undefined
 let broker: AzureServiceBusBroker | undefined
@@ -12,14 +12,15 @@ export let testPort: number | undefined
 export let testServiceBusPort: number | undefined
 
 beforeAll(async () => {
+  const { amqp_server, bundle } = createApiBundle()
+
   process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
   testPort = await getPort()
-  server = await serveHTTPS(testPort)
+  server = await serveHTTPS(bundle, testPort)
 
   testServiceBusPort = await getPort()
-  azure_service_bus_broker.port = testServiceBusPort
-  // azure_service_bus_broker.logger = getTestLogger("amqp")
-  await azure_service_bus_broker.open()
+  amqp_server.port = testServiceBusPort
+  await amqp_server.open()
 })
 
 afterAll(async () => {
