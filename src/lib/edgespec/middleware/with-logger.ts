@@ -13,7 +13,7 @@ export type Logger = {
  */
 export const createWithLogger =
   <L extends Logger>(
-    logger: L
+    logger: L,
   ): Middleware<
     {},
     {

@@ -17,8 +17,8 @@ export type Middleware<
   ctx: RequiredContext & Partial<NewContext>,
   next: (
     request: EdgeSpecRequest,
-    ctx: RequiredContext & Partial<NewContext>
-  ) => Promise<Response>
+    ctx: RequiredContext & Partial<NewContext>,
+  ) => Promise<Response>,
 ) =>
   | Response
   | SerializableToResponse

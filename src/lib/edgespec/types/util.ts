@@ -3,12 +3,8 @@
  *
  * Had to create this utility since `keyof Record<I, any>` doesn't seem to give I :/
  */
-export type InferRecordKey<R extends Record<any, any>> = R extends Record<
-  infer K,
-  any
->
-  ? K
-  : never
+export type InferRecordKey<R extends Record<any, any>> =
+  R extends Record<infer K, any> ? K : never
 
 /**
  * Executes an "array map" function on a tuple through a record

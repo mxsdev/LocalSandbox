@@ -1,31 +1,31 @@
 {
-    "compilerOptions": {
-        "strict": true,
-        "allowUnreachableCode": false,
-        "noFallthroughCasesInSwitch": true,
-        "noImplicitOverride": true,
-        "noImplicitReturns": true,
-        "noPropertyAccessFromIndexSignature": true,
-        "noUncheckedIndexedAccess": true,
-        
-        "esModuleInterop": true,
-        "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": true,
-        
-        "checkJs": false,
+  "compilerOptions": {
+    "strict": true,
+    "allowUnreachableCode": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true,
 
-        "isolatedModules": true,
-        "noEmit": true,
-        "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
 
-        "target": "ES2021",
-        "module": "Node16",
-        "paths": {
-            "edgespec": ["./src/lib/edgespec/index.ts"],
-            "edgespec/*": ["./src/lib/edgespec/*"],
-            "test/*": ["./test/*"],
-            "lib/*": ["./src/lib/*"]
-        }
-    },
-    "include": ["src/**/*.ts", "test/**/*.ts"]
+    "checkJs": false,
+
+    "isolatedModules": true,
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
+
+    "target": "ES2021",
+    "module": "Node16",
+    "paths": {
+      "edgespec": ["./src/lib/edgespec/index.ts"],
+      "edgespec/*": ["./src/lib/edgespec/*"],
+      "test/*": ["./test/*"],
+      "lib/*": ["./src/lib/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }
