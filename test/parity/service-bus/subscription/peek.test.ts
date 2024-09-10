@@ -3,8 +3,7 @@ import { fixturedTest } from "test/fixtured-test.js"
 fixturedTest(
   "cannot peek messages on a topic",
   async ({ onTestFinished, azure_queue, expect }) => {
-    const { createSender, createReceiver, createTopic, createSubscription } =
-      azure_queue
+    const { createSender, createReceiver, createTopic } = azure_queue
 
     const topic = await createTopic({})
 

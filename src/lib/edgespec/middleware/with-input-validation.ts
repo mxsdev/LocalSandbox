@@ -1,7 +1,7 @@
 import { z, ZodError, ZodFirstPartyTypeKind } from "zod"
 
 import type { QueryArrayFormats } from "edgespec/types/global-spec.js"
-import { Middleware } from "edgespec/middleware/index.js"
+import type { Middleware } from "edgespec/middleware/index.js"
 import {
   BadRequestError,
   InputParsingError,
@@ -9,7 +9,7 @@ import {
   InvalidContentTypeError,
   InvalidQueryParamsError,
 } from "./http-exceptions.js"
-import { EdgeSpecRequest } from "edgespec/types/web-handler.js"
+import type { EdgeSpecRequest } from "edgespec/types/web-handler.js"
 
 const getZodObjectSchemaFromZodEffectSchema = (
   isZodEffect: boolean,
@@ -278,7 +278,7 @@ export const validateInput = async <
     }
   }
 
-  let multiPartFormData = undefined
+  let multiPartFormData
 
   if (input.formData) {
     try {
@@ -291,7 +291,7 @@ export const validateInput = async <
     }
   }
 
-  let urlEncodedFormData = undefined
+  let urlEncodedFormData
 
   if (input.urlEncodedFormData) {
     try {
@@ -399,5 +399,5 @@ export const withInputValidation =
   async (req, ctx, next) => {
     await validateInput(input, req)
 
-    return next(req, ctx)
+    return await next(req, ctx)
   }

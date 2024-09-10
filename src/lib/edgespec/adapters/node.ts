@@ -1,4 +1,4 @@
-import { NodeHandler } from "@edge-runtime/node-utils"
+import type { NodeHandler } from "@edge-runtime/node-utils"
 import http from "node:http"
 import { transformToNodeBuilder } from "edgespec/edge/transform-to-node.js"
 import type { Middleware } from "edgespec/middleware/index.js"
@@ -17,10 +17,11 @@ export const getNodeHandler: EdgeSpecAdapter<
     defaultOrigin: `http://localhost${port ? `:${port}` : ""}`,
   })
 
-  return transformToNode((req) =>
-    edgeSpec.makeRequest(req as Request, {
-      middleware,
-    }),
+  return transformToNode(
+    async (req) =>
+      await edgeSpec.makeRequest(req as Request, {
+        middleware,
+      }),
   )
 }
 

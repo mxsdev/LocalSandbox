@@ -1,7 +1,7 @@
 import {
   Connection,
   ConnectionEvents,
-  ConnectionOptions,
+  type ConnectionOptions,
   SenderEvents,
   SessionEvents,
 } from "rhea-promise"

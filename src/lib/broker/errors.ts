@@ -1,5 +1,5 @@
 import { ErrorNameConditionMapper } from "@azure/core-amqp"
-import { AmqpError } from "rhea"
+import type { AmqpError } from "rhea"
 
 export abstract class StoreBusError extends Error {
   constructor(

@@ -17,15 +17,16 @@ export type Middleware<
   ctx: RequiredContext & Partial<NewContext>,
   next: (
     request: EdgeSpecRequest,
-    ctx: RequiredContext & Partial<NewContext>
-  ) => Promise<Response>
+    ctx: RequiredContext & Partial<NewContext>,
+  ) => Promise<Response>,
 ) =>
   | Response
   | SerializableToResponse
   | Promise<Response | SerializableToResponse>
 
-export type MiddlewareChain<RequiredOptions = any> =
-  readonly Middleware<RequiredOptions>[]
+export type MiddlewareChain<RequiredOptions = any> = ReadonlyArray<
+  Middleware<RequiredOptions>
+>
 
 /**
  * Collect all result options from a middleware chain
@@ -80,13 +81,14 @@ export type AccumulateMiddlewareChainResultOptions<
  *
  */
 export type MapMiddlewares<
-  MiddlewareMap extends { [mw: string]: Middleware },
+  MiddlewareMap extends Record<string, Middleware>,
   Middlewares extends
-    | readonly (keyof MiddlewareMap)[]
+    | ReadonlyArray<keyof MiddlewareMap>
     | keyof MiddlewareMap
     | "none",
-> = Middlewares extends readonly (keyof MiddlewareMap)[]
-  ? MapArray<MiddlewareMap, Middlewares>
-  : Middlewares extends infer K extends keyof MiddlewareMap
-    ? readonly [MiddlewareMap[K]]
-    : readonly []
+> =
+  Middlewares extends ReadonlyArray<keyof MiddlewareMap>
+    ? MapArray<MiddlewareMap, Middlewares>
+    : Middlewares extends infer K extends keyof MiddlewareMap
+      ? readonly [MiddlewareMap[K]]
+      : readonly []

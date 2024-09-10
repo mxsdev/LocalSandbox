@@ -707,7 +707,7 @@ export const dataDisk = z
         "Specifies whether writeAccelerator should be enabled or disabled on the disk.",
       )
       .optional(),
-    createOption: createOption,
+    createOption,
     diskSizeGB: z
       .number()
       .int()
@@ -764,7 +764,7 @@ export const osDisk = z
       )
       .optional(),
     diffDiskSettings: diffDiskSettings.optional(),
-    createOption: createOption,
+    createOption,
     diskSizeGB: z
       .number()
       .int()

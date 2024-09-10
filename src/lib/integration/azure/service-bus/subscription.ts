@@ -1,7 +1,7 @@
 import { NotFoundError } from "edgespec/middleware/http-exceptions.js"
-import subscriptionRoutes from "../../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/subscriptions.js"
-import { extractRoute } from "../../../openapi/extract-route.js"
-import { azure_routes } from "../routes.js"
+import subscriptionRoutes from "generated/azure-rest-api-specs/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/subscriptions.js"
+import { extractRoute } from "lib/openapi/extract-route.js"
+import { azure_routes } from "lib/integration/azure/routes.js"
 
 azure_routes.implementRoute(
   ...extractRoute(

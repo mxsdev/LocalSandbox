@@ -42,7 +42,7 @@ const main = async () => {
     ]),
   )
 
-  const root = "./output"
+  const root = "./src/generated/azure-rest-api-specs"
 
   for (const [filePath, data] of Object.entries(convertedFileAsTs)) {
     let sortedDefinitions: { varName: string; varContent: string }[]
@@ -148,27 +148,6 @@ const main = async () => {
       await maybePretty(fileContents, prettierConfig),
     )
   }
-
-  // console.log(convertedFileAsTs)
-
-  return
-
-  // await fs.writeFile("./test.json", JSON.stringify(openApiDoc, null, 4))
-  // const prettierConfig = await resolveConfig("./")
-  // const result = getZodClientTemplateContext(
-  //   openApiDoc,
-  //   // distPath: "./output.ts",
-  //   // prettierConfig,
-  //   // templatePath:
-  //   //   "../azure-rest-api-specs/specification/compute/resource-manager/Microsoft.Compute/ComputeRP/stable/2024-07-01/",
-  // )
-  // console.log(
-  //   result.endpoints.find(
-  //     (e) =>
-  //       e.path ===
-  //       "/subscriptions/:subscriptionId/resourceGroups/:resourceGroupName/providers/Microsoft.Compute/virtualMachines/:vmName",
-  //   )!.parameters,
-  // )
 }
 
-main()
+void main()

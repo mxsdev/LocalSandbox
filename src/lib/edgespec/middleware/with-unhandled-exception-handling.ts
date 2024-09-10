@@ -1,5 +1,5 @@
-import { Middleware } from "edgespec/middleware/types.js"
-import { Logger } from "./with-logger.js"
+import type { Middleware } from "edgespec/middleware/types.js"
+import type { Logger } from "./with-logger.js"
 
 export const withUnhandledExceptionHandling: Middleware<{
   logger?: Logger

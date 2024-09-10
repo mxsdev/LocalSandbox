@@ -4,19 +4,19 @@ import {
   parseRheaMessage,
 } from "../amqp/parse-message.js"
 import {
-  BrokerConnectionEvent,
-  BrokerMessageEvent,
-  BrokerReceiverEvent,
-  BrokerSenderEvent,
+  type BrokerConnectionEvent,
+  type BrokerMessageEvent,
+  type BrokerReceiverEvent,
+  type BrokerSenderEvent,
   BrokerServer,
-  BrokerServerOpts,
+  type BrokerServerOpts,
 } from "./server.js"
 import {
   type Receiver,
   type Sender,
   type Session,
   generate_uuid,
-  Connection,
+  type Connection,
 } from "rhea"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import {
@@ -31,9 +31,9 @@ import { z } from "zod"
 import { serializedLong } from "../util/long.js"
 import { BrokerConstants } from "./constants.js"
 import { unreorderLockToken } from "../util/service-bus.js"
-import { Middleware } from "edgespec"
-import { Logger } from "pino"
-import {
+import type { Middleware } from "edgespec"
+import type { Logger } from "pino"
+import type {
   BrokerStore,
   QualifiedMessageDestinationId,
   QualifiedMessageSourceId,
@@ -75,7 +75,7 @@ export class AzureServiceBusBroker extends BrokerServer {
 
   private cbs_senders: Record<string, Sender> = {}
 
-  private session_id_map = new WeakMap<Session, string>()
+  private readonly session_id_map = new WeakMap<Session, string>()
 
   override async onMessage({
     message,
@@ -398,7 +398,7 @@ export class AzureServiceBusBroker extends BrokerServer {
                     )
                   ) {
                     this.logger?.warn(
-                      `Tried to schedule sequence ${sequenceNumber} which was not found!`,
+                      `Tried to schedule sequence ${sequenceNumber.toString()} which was not found!`,
                     )
                   }
                 }
@@ -413,7 +413,7 @@ export class AzureServiceBusBroker extends BrokerServer {
                 const {
                   [Constants.sessionIdMapKey]: sessionId,
                   // TODO: do we need to correlate w/ sequence number and "replay" certain messages?
-                  [Constants.fromSequenceNumber]: sequenceNumber,
+                  // [Constants.fromSequenceNumber]: sequenceNumber,
                   [Constants.messageCount]: messageCount,
                 } = parsed.data.body
 
@@ -604,6 +604,7 @@ export class AzureServiceBusBroker extends BrokerServer {
       this.link_queue.set(receiver, queue)
     }
   }
+
   override async onReceiverClose({
     receiver,
   }: BrokerReceiverEvent): Promise<void> {
@@ -643,7 +644,6 @@ export class AzureServiceBusBroker extends BrokerServer {
 
       // TODO: filter based on error type
       this.logger?.error({ sender: sender.name, err }, "Error adding consumer")
-      return
     }
   }
 
@@ -691,11 +691,11 @@ export class AzureServiceBusBroker extends BrokerServer {
 
   override async close(): Promise<void> {
     this.consumer_balancer.close()
-    return await super.close()
+    await super.close()
   }
 
   constructor(
-    private store: BrokerStore,
+    private readonly store: BrokerStore,
     opts?: BrokerServerOpts,
   ) {
     super(opts)

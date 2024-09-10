@@ -1,5 +1,5 @@
 import { fixturedTest } from "../fixtured-test.js"
-import { ResourceGroup } from "@azure/arm-resources"
+import type { ResourceGroup } from "@azure/arm-resources"
 
 fixturedTest("can create resource group", async ({ azure, expect }) => {
   const resource_group =

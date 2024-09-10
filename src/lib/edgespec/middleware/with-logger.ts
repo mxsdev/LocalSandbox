@@ -1,4 +1,4 @@
-import { Middleware } from "./types.js"
+import type { Middleware } from "./types.js"
 
 export type Logger = {
   debug: (...args: any[]) => void
@@ -13,14 +13,14 @@ export type Logger = {
  */
 export const createWithLogger =
   <L extends Logger>(
-    logger: L
+    logger: L,
   ): Middleware<
     {},
     {
       logger: L
     }
   > =>
-  (req, ctx, next) => {
+  async (req, ctx, next) => {
     ctx.logger = logger
-    return next(req, ctx)
+    return await next(req, ctx)
   }

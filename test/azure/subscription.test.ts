@@ -1,4 +1,4 @@
-import { Subscription, SubscriptionClient } from "@azure/arm-subscriptions"
+import { type Subscription, SubscriptionClient } from "@azure/arm-subscriptions"
 import { fixturedTest } from "../fixtured-test.js"
 import toArray from "it-all"
 import {

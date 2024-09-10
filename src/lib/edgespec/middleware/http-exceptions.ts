@@ -1,5 +1,5 @@
 import { formatZodError } from "edgespec/lib/format-zod-error.js"
-import { z } from "zod"
+import type { z } from "zod"
 
 export interface HttpException {
   status: number
@@ -41,23 +41,9 @@ export abstract class BadRequestError extends EdgeSpecMiddlewareError {
   }
 }
 
-export class InvalidQueryParamsError extends BadRequestError {
-  constructor(message: string) {
-    super(message)
-  }
-}
-
-export class InvalidContentTypeError extends BadRequestError {
-  constructor(message: string) {
-    super(message)
-  }
-}
-
-export class InputParsingError extends BadRequestError {
-  constructor(message: string) {
-    super(message)
-  }
-}
+export class InvalidQueryParamsError extends BadRequestError {}
+export class InvalidContentTypeError extends BadRequestError {}
+export class InputParsingError extends BadRequestError {}
 
 export class InputValidationError extends BadRequestError {
   constructor(error: z.ZodError<any>) {

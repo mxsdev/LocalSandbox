@@ -1,29 +1,30 @@
+/* eslint-disable no-empty-pattern */
 import pMemoize from "p-memoize"
 import { test } from "vitest"
 import { testPort, testServiceBusPort } from "./setup.js"
 import { randomUUID } from "node:crypto"
 import {
-  SBQueue,
-  SBSubscription,
-  SBTopic,
+  type SBQueue,
+  type SBSubscription,
+  type SBTopic,
   ServiceBusManagementClient,
 } from "@azure/arm-servicebus"
 import { SubscriptionClient } from "@azure/arm-subscriptions"
 import type { ServiceClientOptions } from "@azure/core-client"
 import { LocalSandboxAzureCredential } from "lib/service-client/local-sandbox-azure-credential.js"
 import { ResourceManagementClient } from "@azure/arm-resources"
-import { Logger } from "pino"
+import type { Logger } from "pino"
 import {
   createNewStore,
-  IntegrationStore,
+  type IntegrationStore,
 } from "lib/integration/integration.js"
 import { azure_routes } from "lib/integration/azure/routes.js"
 import { getTestLogger } from "./get-test-logger.js"
 import {
   ServiceBusClient,
-  ServiceBusClientOptions,
-  ServiceBusReceiverOptions,
-  ServiceBusSessionReceiverOptions,
+  type ServiceBusClientOptions,
+  type ServiceBusReceiverOptions,
+  type ServiceBusSessionReceiverOptions,
 } from "@azure/service-bus"
 import { z } from "zod"
 import { DefaultAzureCredential } from "@azure/identity"
@@ -125,28 +126,30 @@ const getAzureContext = (
 
   const rg = pMemoize(async () =>
     e2e_config?.AZURE_RESOURCE_GROUP
-      ? resource_client.resourceGroups.get(rg_name)
-      : resource_client.resourceGroups.createOrUpdate(rg_name, { location }),
+      ? await resource_client.resourceGroups.get(rg_name)
+      : await resource_client.resourceGroups.createOrUpdate(rg_name, {
+          location,
+        }),
   )
+
+  const sb_queue_default: SBQueue = {
+    autoDeleteOnIdle: Temporal.Duration.from({
+      minutes: 5,
+    }).toString(),
+  }
 
   const sb = {
     default_queue_params:
-      e2e_config?.TEST_AZURE_E2E === true
-        ? ({
-            autoDeleteOnIdle: Temporal.Duration.from({
-              minutes: 5,
-            }).toString(),
-          } as SBQueue)
-        : {},
+      e2e_config?.TEST_AZURE_E2E === true ? sb_queue_default : {},
 
     namespace_name: e2e_config?.AZURE_SERVICE_BUS_NAMESPACE ?? "namespace", // TODO: use randomUUID()
     namespace: pMemoize(async () =>
       e2e_config?.AZURE_SERVICE_BUS_NAMESPACE
-        ? sb_management_client.namespaces.get(
+        ? await sb_management_client.namespaces.get(
             rg_name,
             e2e_config.AZURE_SERVICE_BUS_NAMESPACE,
           )
-        : sb_management_client.namespaces.beginCreateOrUpdateAndWait(
+        : await sb_management_client.namespaces.beginCreateOrUpdateAndWait(
             (await rg()).name!,
             "namespace",
             {
@@ -175,7 +178,7 @@ const getAzureContext = (
     baseURL: endpoint,
     id: subscriptionId,
     subscription_id: subscriptionId,
-    credential: credential,
+    credential,
     sb_management_client,
     subscription_client,
     service_client_options,
@@ -204,7 +207,9 @@ const getAzureContext = (
             },
           )
 
-      onTestFinished(() => sb_client.close())
+      onTestFinished(async () => {
+        await sb_client.close()
+      })
 
       return sb_client
     },
@@ -243,7 +248,9 @@ const getAzureContextWithQueueFixtures = async (
     ...args: Parameters<(typeof sb_client)["createSender"]>
   ) => {
     const sender = sb_client.createSender(...args)
-    onTestFinished(() => sender.close())
+    onTestFinished(async () => {
+      await sender.close()
+    })
     return sender
   }
 
@@ -264,7 +271,9 @@ const getAzureContextWithQueueFixtures = async (
     const receiver = await sb_client.acceptSession(
       ...(args as unknown as [any, any]),
     )
-    onTestFinished(() => receiver.close())
+    onTestFinished(async () => {
+      await receiver.close()
+    })
     return receiver
   }
 
@@ -278,13 +287,15 @@ const getAzureContextWithQueueFixtures = async (
         ]
   ) => {
     const receiver = sb_client.createReceiver(...(args as [any]))
-    onTestFinished(() => receiver.close())
+    onTestFinished(async () => {
+      await receiver.close()
+    })
     return receiver
   }
 
   // TODO: handle clean-up in this function
   const createQueue = async (parameters: SBQueue) =>
-    sb_management_client.queues.createOrUpdate(
+    await sb_management_client.queues.createOrUpdate(
       rg_name,
       namespace_name,
       randomUUID(),
@@ -295,7 +306,7 @@ const getAzureContextWithQueueFixtures = async (
     )
 
   const createTopic = async (parameters: SBTopic) =>
-    sb_management_client.topics.createOrUpdate(
+    await sb_management_client.topics.createOrUpdate(
       rg_name,
       namespace_name,
       randomUUID(),
@@ -309,7 +320,7 @@ const getAzureContextWithQueueFixtures = async (
     topic_name: string,
     parameters: SBSubscription,
   ) =>
-    sb_management_client.subscriptions.createOrUpdate(
+    await sb_management_client.subscriptions.createOrUpdate(
       rg_name,
       namespace_name,
       topic_name,
@@ -321,16 +332,16 @@ const getAzureContextWithQueueFixtures = async (
     )
 
   const getQueue = async (queue_name: string) =>
-    sb_management_client.queues.get(rg_name, namespace_name, queue_name)
+    await sb_management_client.queues.get(rg_name, namespace_name, queue_name)
 
   const getTopic = async (topic_name: string) =>
-    sb_management_client.topics.get(rg_name, namespace_name, topic_name)
+    await sb_management_client.topics.get(rg_name, namespace_name, topic_name)
 
   const getSubscription = async (
     topic_name: string,
     subscription_name: string,
   ) =>
-    sb_management_client.subscriptions.get(
+    await sb_management_client.subscriptions.get(
       rg_name,
       namespace_name,
       topic_name,
@@ -355,7 +366,7 @@ const getAzureContextWithQueueFixtures = async (
   }
 }
 
-export type TestContext = {
+export interface TestContext {
   azure: ReturnType<typeof getAzureContext>
   env: TestEnv
   expectCorrelatedTime: (actual: Date, expected: Date) => void
@@ -368,13 +379,13 @@ export type TestContext = {
 
 export const fixturedTest = test.extend<TestContext>({
   expectCorrelatedTime: async ({ env, expect }, use) => {
-    use((actual, expected) => {
+    await use((actual, expected) => {
       const time_window = env.TEST_AZURE_E2E === true ? 800 : 100
-      const delta = Math.abs(actual!.getTime() - expected.getTime())
+      const delta = Math.abs(actual.getTime() - expected.getTime())
 
       expect(
         delta,
-        `Expected remote times to be correlated: \n\t${actual}\n\t${expected}\n`,
+        `Expected remote times to be correlated: \n\t${actual.toISOString()}\n\t${expected.toISOString()}\n`,
       ).toBeLessThan(time_window)
     })
   },

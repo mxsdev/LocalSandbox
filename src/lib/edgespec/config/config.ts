@@ -37,5 +37,5 @@ export const defineConfig = (config: EdgeSpecConfig): EdgeSpecConfig => {
     return parsedConfig.data
   }
 
-  throw new Error(`Invalid config: ${parsedConfig.error}`)
+  throw new Error(`Invalid config: ${parsedConfig.error.toString()}`)
 }

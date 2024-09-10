@@ -1,8 +1,8 @@
 import type { FetchEvent } from "@edge-runtime/primitives"
-import { EdgeSpecRouteBundle } from "./edge-spec.js"
-import { Primitive } from "type-fest"
-import { z } from "zod"
-import { ResponseTypeToContext } from "./context.js"
+import type { EdgeSpecRouteBundle } from "./edge-spec.js"
+import type { Primitive } from "type-fest"
+import type { z } from "zod"
+import type { ResponseTypeToContext } from "./context.js"
 import type { RouteSpec } from "./route-spec.js"
 import type { GlobalSpec } from "./global-spec.js"
 
@@ -15,9 +15,7 @@ export type HTTPMethods =
   | "HEAD"
   | "OPTIONS"
 
-export type EdgeSpecRouteParams = {
-  [routeParam: string]: string | string[]
-}
+export type EdgeSpecRouteParams = Record<string, string | string[]>
 
 export type HeadersDescriptor = Headers | HeadersInit
 
@@ -35,9 +33,9 @@ export interface SerializableToResponse {
    * @throws z.ZodError if the response does not match the schema
    * @param schema - the schema to validate the response against
    */
-  serializeToResponse(schema: z.ZodTypeAny): Response
+  serializeToResponse: (schema: z.ZodTypeAny) => Response
 
-  statusCode(): number
+  statusCode: () => number
 }
 
 export type ValidFormDataValue = Primitive | Blob

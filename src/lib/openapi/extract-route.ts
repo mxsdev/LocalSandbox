@@ -1,8 +1,8 @@
-import { HTTPMethods } from "edgespec"
+import type { HTTPMethods } from "edgespec"
 
 export const extractRoute = <
   const R extends Readonly<
-    Record<K, readonly { readonly methods: readonly HTTPMethods[] }[]>
+    Record<K, ReadonlyArray<{ readonly methods: readonly HTTPMethods[] }>>
   >,
   const K extends keyof R,
   const M extends R[K][number]["methods"][number],

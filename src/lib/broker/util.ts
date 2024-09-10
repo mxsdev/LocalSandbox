@@ -1,5 +1,5 @@
-import { Logger, P } from "pino"
-import {
+import type { Logger } from "pino"
+import type {
   _QualifiedQueueId,
   _QualifiedSubscriptionId,
   _QualifiedTopicId,
@@ -13,13 +13,11 @@ import {
   SubscriptionModel,
   TopicModel,
 } from "./types.js"
-import { Message } from "rhea"
-import { Temporal } from "@js-temporal/polyfill"
 
 export const getQueueOrTopicOrSubscriptionFromStoreOrThrow = (
   ...args: Parameters<typeof getQueueOrTopicOrSubscriptionFromStore>
 ) => {
-  const [queueId, _, logger] = args
+  const [queueId, , logger] = args
 
   const err = () => {
     logger?.error(
@@ -69,7 +67,7 @@ const getQueueOrTopicOrSubscriptionFromStore = (
 export const getMessageSourceFromStoreOrThrow = (
   ...args: Parameters<typeof getMessageSourceFromStore>
 ) => {
-  const [queueId, _, logger] = args
+  const [queueId, , logger] = args
 
   const err = () => {
     logger?.error(
@@ -124,7 +122,7 @@ const getMessageSourceFromStore = (
 export const getMessageDestinationFromStoreOrThrow = (
   ...args: Parameters<typeof getMessageDestinationFromStore>
 ) => {
-  const [queueId, _, logger] = args
+  const [queueId, , logger] = args
 
   const err = () => {
     logger?.error(

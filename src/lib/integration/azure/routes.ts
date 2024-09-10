@@ -1,33 +1,32 @@
-import { randomUUID } from "node:crypto"
 import {
   createIntegration,
   createModelSpecs,
-  IntegrationModel,
-  IntegrationStore,
+  type IntegrationModel,
+  type IntegrationStore,
 } from "../integration.js"
-import { subscription } from "../../../../output/resources/resource-manager/Microsoft.Resources/stable/2016-06-01/subscriptions.js"
-import { Middleware } from "edgespec"
-import { bearerToken } from "../../util/bearer-token.js"
-import { resourceGroup } from "../../../../output/resources/resource-manager/Microsoft.Resources/stable/2024-07-01/resources.js"
-import { sbNamespace } from "../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/namespace-preview.js"
+import { subscription } from "generated/azure-rest-api-specs/resources/resource-manager/Microsoft.Resources/stable/2016-06-01/subscriptions.js"
+import type { Middleware } from "edgespec"
+import { bearerToken } from "lib/util/bearer-token.js"
+import { resourceGroup } from "generated/azure-rest-api-specs/resources/resource-manager/Microsoft.Resources/stable/2024-07-01/resources.js"
+import { sbNamespace } from "generated/azure-rest-api-specs/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/namespace-preview.js"
 import {
   sbQueue,
   sbQueueProperties,
-} from "../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/Queue.js"
+} from "generated/azure-rest-api-specs/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/Queue.js"
 import { z } from "zod"
 import { Temporal } from "@js-temporal/polyfill"
-import { zodTimeout } from "../../util/timeout.js"
-import { AzureServiceBusBroker } from "../../broker/broker.js"
-import { withExternallyPopulatedLogger } from "../../logger/with-logger.js"
+import { zodTimeout } from "lib/util/timeout.js"
+import { AzureServiceBusBroker } from "lib/broker/broker.js"
+import { withExternallyPopulatedLogger } from "lib/logger/with-logger.js"
 import {
   sbSubscription,
   sbSubscriptionProperties,
-} from "../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/subscriptions.js"
+} from "generated/azure-rest-api-specs/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/subscriptions.js"
 import {
   sbTopic,
   sbTopicProperties,
-} from "../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/topics.js"
-import { entityStatus } from "../../../../output/servicebus/resource-manager/common/v1/definitions.js"
+} from "generated/azure-rest-api-specs/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/topics.js"
+import { entityStatus } from "generated/azure-rest-api-specs/servicebus/resource-manager/common/v1/definitions.js"
 
 export const DEFAULT_SUBSCRIPTION_DISPLAY_NAME =
   "LocalSandbox Test Subscription"
@@ -175,7 +174,7 @@ export const azure_routes = createIntegration({
           args.new_val?.properties.autoDeleteOnIdle !==
           args.old_val?.properties.autoDeleteOnIdle
         ) {
-          let new_timeout: NodeJS.Timeout | undefined = undefined
+          let new_timeout: NodeJS.Timeout | undefined
 
           if (args.new_val?.properties.autoDeleteOnIdle) {
             clearTimeout(args.new_val.autoDeleteTimeout)

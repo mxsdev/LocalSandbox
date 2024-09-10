@@ -1,21 +1,26 @@
-import rhea, { message, Session } from "rhea"
+import {
+  type Session,
+  type Delivery,
+  type Message,
+  type Sender,
+  SenderEvents,
+} from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
-import { Delivery, Message, Sender, SenderEvents } from "rhea"
-import { Logger, P } from "pino"
+import type { Logger } from "pino"
 import { Constants } from "@azure/core-amqp"
 import Long from "long"
 import {
-  BufferLikeEncodedLong,
+  type BufferLikeEncodedLong,
   serializedLong,
   unserializedLongToArrayLike,
   unserializedLongToBufferLike,
 } from "../util/long.js"
-import { BrokerConsumerBalancer } from "./consumer-balancer.js"
+import type { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import { uuidToString } from "../util/uuid.js"
 import type { MessageCountDetails } from "@azure/arm-servicebus"
 import { BrokerConstants } from "./constants.js"
-import { z } from "zod"
-import {
+import type { z } from "zod"
+import type {
   BrokerStore,
   DeliveryTag,
   QualifiedMessageDestinationId,
@@ -30,10 +35,7 @@ import {
   getSubscriptionFromStoreOrThrow,
   getTopicFromStoreOrThrow,
 } from "./util.js"
-import {
-  MinPriorityQueue,
-  PriorityQueue,
-} from "@datastructures-js/priority-queue"
+import { PriorityQueue } from "@datastructures-js/priority-queue"
 import { SessionCannotBeLockedError, SessionRequiredError } from "./errors.js"
 
 interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
@@ -58,7 +60,9 @@ class MessageScheduler<M extends Message> {
     { timeout: NodeJS.Timeout; message: ScheduledMessage<M> }
   > = {}
 
-  constructor(private sendMessage: (message: ScheduledMessage<M>) => void) {}
+  constructor(
+    private readonly sendMessage: (message: ScheduledMessage<M>) => void,
+  ) {}
 
   get messages() {
     return Object.values(this.scheduled_messages).map(({ message }) => message)
@@ -95,9 +99,9 @@ class MessageScheduler<M extends Message> {
   }
 
   close() {
-    Object.values(this.scheduled_messages).forEach(({ timeout }) =>
-      clearTimeout(timeout),
-    )
+    Object.values(this.scheduled_messages).forEach(({ timeout }) => {
+      clearTimeout(timeout)
+    })
   }
 }
 
@@ -112,7 +116,7 @@ class DeliveryMap<T> {
     return Object.keys(this._deliveries).length
   }
 
-  constructor(private logger: Logger | undefined) {}
+  constructor(private readonly logger: Logger | undefined) {}
 
   private deliveryKey(delivery: DeliveryTag) {
     return uuidToString.parse(delivery.tag)
@@ -147,7 +151,7 @@ class DeliveryMap<T> {
 }
 
 class SequenceNumberFactory {
-  constructor(private initial_sequence_number = new Long(1)) {}
+  constructor(private readonly initial_sequence_number = new Long(1)) {}
 
   private next_sequence_number = this.initial_sequence_number
 
@@ -219,6 +223,7 @@ class MessageConsumers<M extends TaggedMessage> {
     string,
     MessageConsumer<M> & { session_id?: string }
   > = {}
+
   private _consumer_by_session: Record<string, MessageConsumer<M>> = {}
 
   get values() {
@@ -238,7 +243,7 @@ class MessageConsumers<M extends TaggedMessage> {
 
     this._consumers[consumer.sender.name] = {
       ...consumer,
-      session_id: session_id,
+      session_id,
     }
     if (session_id) {
       this._consumer_by_session[session_id] = consumer
@@ -257,14 +262,17 @@ class MessageConsumers<M extends TaggedMessage> {
 }
 
 export abstract class MessageSequence<M extends TaggedMessage> {
-  private _messages = new PriorityQueue<EnqueuedMessage<M>>(
+  private readonly _messages = new PriorityQueue<EnqueuedMessage<M>>(
     compareScheduledMessages,
   )
-  private _session_messages: Record<string, PriorityQueue<EnqueuedMessage<M>>> =
-    {}
 
-  private deferred_messages = new Map<string, ScheduledMessage<M>>()
-  private locked_messages = new Map<
+  private readonly _session_messages: Record<
+    string,
+    PriorityQueue<EnqueuedMessage<M>>
+  > = {}
+
+  private readonly deferred_messages = new Map<string, ScheduledMessage<M>>()
+  private readonly locked_messages = new Map<
     string,
     {
       message: ScheduledMessage<M>
@@ -272,27 +280,28 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       lock_duration_ms: number
     }
   >()
-  private message_scheduler = new MessageScheduler<ScheduledMessage<M>>(
-    (message) => {
-      this.enqueue(message)
-      this.tryFlush()
-    },
-  )
+
+  private readonly message_scheduler = new MessageScheduler<
+    ScheduledMessage<M>
+  >((message) => {
+    this.enqueue(message)
+    this.tryFlush()
+  })
 
   private message_expiration_timeouts: Record<string, NodeJS.Timeout> = {}
 
   // private consumers: Record<string, MessageConsumer<ScheduledMessage<M>>> = {}
-  private consumers = new MessageConsumers<M>()
+  private readonly consumers = new MessageConsumers<M>()
 
-  private num_messages_transferred_to_dlq: number = 0
+  private readonly num_messages_transferred_to_dlq: number = 0
 
   constructor(
     protected store: BrokerStore,
     public queue_or_subscription_id: string,
     protected logger: Logger | undefined,
-    private consumer_balancer: BrokerConsumerBalancer,
+    private readonly consumer_balancer: BrokerConsumerBalancer,
     protected parent: BrokerMessageSequenceWithSubqueues<M>,
-    private sequence_number_factory = new SequenceNumberFactory(),
+    private readonly sequence_number_factory = new SequenceNumberFactory(),
   ) {}
 
   abstract queue_type: "sb_queue" | "sb_subscription"
@@ -326,12 +335,16 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     }
   }
 
-  private enqueue(...messages: ScheduledMessage<M>[]) {
-    messages.forEach((message) => this.pushMessage(message))
+  private enqueue(...messages: Array<ScheduledMessage<M>>) {
+    messages.forEach((message) => {
+      this.pushMessage(message)
+    })
   }
 
-  private enqueueFront(...messages: ScheduledMessage<M>[]) {
-    messages.forEach((message) => this.pushMessage(message))
+  private enqueueFront(...messages: Array<ScheduledMessage<M>>) {
+    messages.forEach((message) => {
+      this.pushMessage(message)
+    })
   }
 
   private sessionQueue(session_id: string | undefined) {
@@ -495,7 +508,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       )
   }
 
-  private scheduleMessagesInFront(...message: ScheduledMessage<M>[]) {
+  private scheduleMessagesInFront(...message: Array<ScheduledMessage<M>>) {
     this.enqueueFront(...message)
     this.tryFlush()
   }
@@ -616,12 +629,12 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     }
   }
 
-  scheduleMessages(...sourceMessages: M[]): ScheduledMessage<M>[] {
+  scheduleMessages(...sourceMessages: M[]): Array<ScheduledMessage<M>> {
     const messages = sourceMessages.map((msg) =>
       this.sequence_number_factory.bindToMessage(msg),
     )
 
-    const messages_for_immediate_delivery: ScheduledMessage<M>[] = []
+    const messages_for_immediate_delivery: Array<ScheduledMessage<M>> = []
 
     const queue = this.queue
 
@@ -1060,11 +1073,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       [SenderEvents.rejected]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug(Object.keys(e), "sender rejected message")
 
-        const message = this.updateConsumerDisposition(
-          e.sender,
-          e.delivery,
-          "rejected",
-        )
+        this.updateConsumerDisposition(e.sender, e.delivery, "rejected")
       },
     }
 
@@ -1141,9 +1150,9 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     this.message_scheduler.close()
     Object.values(this.message_expiration_timeouts).forEach(clearTimeout)
 
-    Object.values(this.locked_messages).forEach(({ timeout }) =>
-      clearTimeout(timeout),
-    )
+    Object.values(this.locked_messages).forEach(({ timeout }) => {
+      clearTimeout(timeout)
+    })
   }
 }
 
@@ -1183,8 +1192,8 @@ abstract class BrokerMessageSequenceWithSubqueues<M extends TaggedMessage> {
 
   protected sequence_number_factory = new SequenceNumberFactory()
 
-  private queue = this.createMessageSequence()
-  private queue_deadletter = this.createMessageSequence()
+  private readonly queue = this.createMessageSequence()
+  private readonly queue_deadletter = this.createMessageSequence()
 
   get(subqueue_type?: SubqueueType) {
     if (subqueue_type === "deadletter") {
@@ -1234,7 +1243,7 @@ export class BrokerSubscription<
     )
   }
 
-  private closeListeners: (() => void)[] = []
+  private closeListeners: Array<() => void> = []
 
   onClose(listener: () => void) {
     this.closeListeners.push(listener)
@@ -1242,7 +1251,9 @@ export class BrokerSubscription<
 
   // TODO: close subscription on deletion
   override close(): void {
-    this.closeListeners.forEach((l) => l())
+    this.closeListeners.forEach((l) => {
+      l()
+    })
     this.closeListeners = []
 
     super.close()
@@ -1254,11 +1265,13 @@ export class BrokerTopic<M extends TaggedMessage> {
     return getTopicFromStoreOrThrow(this.topic_id, this.store, this.logger)
   }
 
-  private subscription_trigger_fn: any
+  private readonly subscription_trigger_fn: any
 
-  private sequence_number_factory = new SequenceNumberFactory(new Long(1))
+  private readonly sequence_number_factory = new SequenceNumberFactory(
+    new Long(1),
+  )
 
-  private message_scheduler = new MessageScheduler<M>((message) => {
+  private readonly message_scheduler = new MessageScheduler<M>((message) => {
     this.logger?.debug(
       {
         message_id: message.message_id,
@@ -1275,7 +1288,7 @@ export class BrokerTopic<M extends TaggedMessage> {
     protected store: BrokerStore,
     public topic_id: string,
     protected logger: Logger | undefined,
-    private consumer_balancer: BrokerConsumerBalancer,
+    private readonly consumer_balancer: BrokerConsumerBalancer,
   ) {
     this.subscription_trigger_fn = store.sb_subscription.registerTrigger({
       change: (args) => {
@@ -1316,7 +1329,7 @@ export class BrokerTopic<M extends TaggedMessage> {
     }
   }
 
-  private subscriptions: BrokerSubscription<M>[] = []
+  private subscriptions: Array<BrokerSubscription<M>> = []
 
   private registerSubscription(subscription: BrokerSubscription<M>) {
     subscription.onClose(
@@ -1365,7 +1378,7 @@ export class BrokerTopic<M extends TaggedMessage> {
   private enqueue(
     _message: M,
     force_reallocation = false,
-  ): ScheduledMessage<M>[] {
+  ): Array<ScheduledMessage<M>> {
     // TODO: determine why this works this way (discovered in
     // test/parity/service-bus/subscription/scheduled.test.ts)
     const message = this.sequence_number_factory.bindToMessage(
@@ -1393,7 +1406,7 @@ export class BrokerTopic<M extends TaggedMessage> {
     )
   }
 
-  scheduleMessages(...sourceMessages: M[]): ScheduledMessage<M>[] {
+  scheduleMessages(...sourceMessages: M[]): Array<ScheduledMessage<M>> {
     this.propagateAccess()
 
     return sourceMessages.flatMap((message) => {

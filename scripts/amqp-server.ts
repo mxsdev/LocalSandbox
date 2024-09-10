@@ -1,33 +1,17 @@
-import { test } from "vitest"
-
-import {
-  ConnectionConfig,
-  ConnectionContextBase,
-  Constants,
-} from "@azure/core-amqp"
-import { ListenOptions } from "net"
-import { Container as ContainerPromise } from "rhea-promise"
 import rhea, {
-  Connection,
-  ConnectionEvents,
-  ConnectionOptions,
-  ReceiverEvents,
-  SenderEvents,
-  Container,
-  Receiver,
-  Session,
-  Message,
-  Delivery,
-  Sender,
+  type Connection,
+  type Container,
+  type Receiver,
+  type Session,
+  type Message,
+  type Delivery,
+  type Sender,
 } from "rhea"
 // import message from "../node_modules/rhea/lib/message.js"
-import { ServiceBusMessageBatch } from "@azure/service-bus"
 import { TEST_CERT, TEST_PK } from "../src/lib/tls/index.js"
 import {
-  isSectionMessage,
   parseBatchOrMessage,
   parseRheaMessage,
-  RheaBufferSectionTypecode,
 } from "../src/lib/amqp/parse-message.js"
 
 const port = 5671
@@ -39,21 +23,13 @@ const container = rhea.create_container({
   port,
 })
 
-// const container = original_container as any as Container
-
-const containerListenOptions: ListenOptions = {
+const server = container.listen({
   port,
-}
-const server = container.listen(
-  // containerListenOptions,
-  {
-    port,
-    host: "0.0.0.0",
-    transport: "tls",
-    cert: TEST_CERT,
-    key: TEST_PK,
-  },
-)
+  host: "0.0.0.0",
+  transport: "tls",
+  cert: TEST_CERT,
+  key: TEST_PK,
+})
 
 process.on("SIGINT", () => {
   console.log("exiting gracefully...")
@@ -61,10 +37,10 @@ process.on("SIGINT", () => {
   process.exit(1)
 })
 
-await new Promise<void>((res) => {
+await new Promise<void>((resolve) => {
   server.addListener("listening", () => {
     console.log(`listening on port ${port}...`)
-    res()
+    resolve()
   })
 })
 

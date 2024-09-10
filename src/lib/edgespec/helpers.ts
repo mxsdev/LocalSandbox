@@ -1,11 +1,11 @@
-import { EdgeSpecRouteBundle } from "./types/index.js"
+import type { EdgeSpecRouteBundle } from "./types/index.js"
 
 /**
  * Loads a file created by `edgespec bundle` and returns the default export.
  * This is a very thin wrapper over `import()` that adds some types.
  */
 export const loadBundle = async (
-  bundlePath: string
+  bundlePath: string,
 ): Promise<EdgeSpecRouteBundle> => {
   const bundle = await import(bundlePath)
   // If the file is imported as CJS, the default export is nested.

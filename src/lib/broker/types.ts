@@ -1,6 +1,6 @@
-import { Delivery, Sender } from "rhea"
-import { azure_routes } from "../integration/azure/routes.js"
-import { IntegrationStore } from "../integration/integration.js"
+import type { Delivery, Sender } from "rhea"
+import type { azure_routes } from "../integration/azure/routes.js"
+import type { IntegrationStore } from "../integration/integration.js"
 
 export type BrokerStore = IntegrationStore<typeof azure_routes>
 
@@ -50,10 +50,6 @@ export interface _QualifiedTopicId extends QualifiedNamespaceId {
 
 export interface _QualifiedSubscriptionId extends _QualifiedTopicId {
   subscription_name: string
-}
-
-interface _QualifiedQueueIdWithSubqueueType extends _QualifiedQueueId {
-  subqueue: SubqueueType | undefined
 }
 
 export type QualifiedQueueOrSubscriptionIdWithSubqueueType = (
