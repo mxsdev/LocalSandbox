@@ -24,8 +24,9 @@
       "edgespec": ["./src/lib/edgespec/index.ts"],
       "edgespec/*": ["./src/lib/edgespec/*"],
       "test/*": ["./test/*"],
-      "lib/*": ["./src/lib/*"]
+      "lib/*": ["./src/lib/*"],
+      "generated/*": ["./src/generated/*"],
     }
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "./vitest.config.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "./vitest.config.ts", "./scripts/**/*.ts"],
 }
