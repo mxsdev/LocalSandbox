@@ -34,8 +34,11 @@ export type ResponseTypeToContext<
           }
 
 const DEFAULT_CONTEXT = {
+  // eslint-disable-next-line @typescript-eslint/unbound-method
   json: EdgeSpecResponse.json,
+  // eslint-disable-next-line @typescript-eslint/unbound-method
   multipartFormData: EdgeSpecResponse.multipartFormData,
+  // eslint-disable-next-line @typescript-eslint/unbound-method
   custom: EdgeSpecResponse.custom,
 } as const
 

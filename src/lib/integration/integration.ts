@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import z from "zod"
 import {
   type CreateWithRouteSpecFn,
@@ -8,15 +9,11 @@ import {
   type RouteSpec,
   createWithEdgeSpec,
   makeRequestAgainstEdgeSpec,
-  HTTPMethods,
   type Middleware,
   type EdgeSpecRouteMap,
 } from "edgespec"
 import { getRouteMatcher } from "next-route-matcher"
-import {
-  EdgeSpecMiddlewareError,
-  NotFoundError,
-} from "edgespec/middleware/http-exceptions.js"
+import { EdgeSpecMiddlewareError } from "edgespec/middleware/http-exceptions.js"
 
 const idField = <K extends string>(key: K) => `${key}_id` as const
 type IdFields<K extends string> = ReturnType<typeof idField<K>>

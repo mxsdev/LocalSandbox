@@ -57,39 +57,6 @@ const loadRef = async <T = Spec>(
   return { spec: doc[refItem] }
 }
 
-const getRef = async (
-  originalDocFilePath: string,
-  ref: string,
-  doc: any,
-  curr: string[],
-) => {
-  const { refPath, refItem, filePath } = getRefParts(ref)
-
-  if (!refItem) {
-    throw new Error("failed to parse ref item for ref " + ref)
-  }
-
-  if (filePath) {
-    doc = await parseSwagger(
-      path.join(path.dirname(originalDocFilePath), filePath),
-    )
-  }
-
-  if (refPath) {
-    curr = refPath.split("/").filter(Boolean)
-  }
-
-  console.log({ refPath, refItem, filePath, ref })
-
-  for (let i = 0; i < curr.length; i++) {
-    doc = doc[curr[i] as any]
-  }
-
-  return { schema: doc[refItem] as Schema, refName: refItem }
-}
-
-type RefParts = ReturnType<typeof getRefParts>
-
 type PathSpec = {
   method: string
   // parameters?: Record<string, string>
@@ -164,7 +131,7 @@ export const convertAPISchemaToZod = async (
 
     const parseJsonSchema = (
       schema: Schema,
-      handleRefItem?: (refItem: string) => void | boolean,
+      handleRefItem?: (refItem: string) => undefined | boolean,
     ) => {
       schema.type ??= "object"
 
@@ -322,13 +289,9 @@ export const convertAPISchemaToZod = async (
                 break
 
               case "header":
-                {
-                }
                 break
 
               case "formData":
-                {
-                }
                 break
             }
           }

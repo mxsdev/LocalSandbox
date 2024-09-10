@@ -10,7 +10,6 @@ import {
 import type { ReadonlyDeep } from "type-fest"
 import { wrapMiddlewares } from "edgespec/create-with-edge-spec.js"
 import { getDefaultContext } from "./context.js"
-import { Server } from "node:http"
 import type { RouteSpec } from "./route-spec.js"
 import {
   EdgeSpecMiddlewareError,

@@ -1,6 +1,5 @@
 import { Temporal } from "@js-temporal/polyfill"
 import delay from "delay"
-import { c } from "rhea/typings/types.js"
 import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest(
