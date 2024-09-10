@@ -544,7 +544,8 @@ export class AzureServiceBusBroker extends BrokerServer {
             case Constants.operations.renewSessionLock:
               {
                 respondSuccess(consumer, {
-                  expiration: Date.now() + 100000,
+                  // TODO: support session locking
+                  expiration: Date.now() + 9999999999999,
                 })
                 delivery.accept()
                 delivery.update(true)

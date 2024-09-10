@@ -34,7 +34,6 @@ import {
   isQualifiedMessageDestinationId,
   isQualifiedTopicId,
   isQualifiedTopicOrQueueId,
-  populateMessageWithDefaultExpiryTime,
 } from "./util.js"
 
 type Queue = BrokerQueue<ParsedTypedRheaMessageWithId>
@@ -146,18 +145,7 @@ export class BrokerConsumerBalancer {
     const queue = this.getMessageDestinationFromStoreOrThrow(queueId)
 
     const messages = message.map((m) => {
-      // const sequence_number = this.allocateSequenceNumber()
-      const msg = m as Message
-
-      if (queue.properties.defaultMessageTimeToLive) {
-        populateMessageWithDefaultExpiryTime(
-          msg,
-          queue.properties.defaultMessageTimeToLive,
-        )
-      }
-
       m["delivery_count"] ??= 0
-
       return m
     })
 

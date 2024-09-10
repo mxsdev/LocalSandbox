@@ -44,15 +44,13 @@ azure_routes.implementRoute(
         // sb_namespace_id: namespace.id,
         sb_topic_id: topic.id,
         name: req.routeParams.subscriptionName,
+        type: "Microsoft.ServiceBus/namespaces/topics/subscriptions",
         properties: {
           ...parameters.properties,
           // TODO: automate this
-          createdAt:
-            parameters.properties?.createdAt ?? new Date().toISOString(),
-          accessedAt:
-            parameters.properties?.accessedAt ??
-            // TODO: set this (based on location TZ) to 0001-01-01 00:00:00.000Z
-            new Date(-62135568422000).toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          accessedAt: new Date().toISOString(),
         },
       })
       .onAllConflictMerge()
@@ -110,8 +108,20 @@ azure_routes.implementRoute(
       ...subscription,
       properties: {
         ...subscription.properties,
+        defaultMessageTimeToLive:
+          subscription.properties.defaultMessageTimeToLive ??
+          "P10675199DT2H48M5.4775807S",
+
         messageCount,
         countDetails: messageCountDetails,
+
+        // TODO: support this
+        deadLetteringOnFilterEvaluationExceptions: false,
+
+        enableBatchedOperations: true,
+
+        // TODO: support this
+        isClientAffine: false,
       },
     })
   },

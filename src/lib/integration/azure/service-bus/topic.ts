@@ -38,15 +38,15 @@ azure_routes.implementRoute(
         location: namespace.location,
         sb_namespace_id: namespace.id,
         name: req.routeParams.topicName,
+        type: "Microsoft.ServiceBus/namespaces/topics",
         properties: {
           ...parameters.properties,
           // TODO: automate this
-          createdAt:
-            parameters.properties?.createdAt ?? new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           accessedAt:
-            parameters.properties?.accessedAt ??
             // TODO: set this (based on location TZ) to 0001-01-01 00:00:00.000Z
-            new Date(-62135568422000).toISOString(),
+            new Date("0001-01-01T00:00:00.000Z").toISOString(),
         },
       })
       .onAllConflictMerge()
@@ -81,7 +81,7 @@ azure_routes.implementRoute(
       .where((ns) => ns.name === req.routeParams.namespaceName)
       .executeTakeFirstOrThrow(() => new NotFoundError("Namespace not found"))
 
-    const queue = ctx.store.sb_topic
+    const topic = ctx.store.sb_topic
       .select()
       .where((q) => q.sb_namespace().id === namespace.id)
       .where((q) => q.name === req.routeParams.topicName)
@@ -89,14 +89,24 @@ azure_routes.implementRoute(
 
     const countDetails =
       ctx.azure_service_bus_broker?.messageDestinationMessageCountDetails(
-        queue.id,
+        topic.id,
       )
 
     return ctx.json({
-      ...queue,
+      ...topic,
       properties: {
-        ...queue.properties,
+        ...topic.properties,
+        defaultMessageTimeToLive:
+          topic.properties.defaultMessageTimeToLive ??
+          "P10675199DT2H48M5.4775807S",
+
         countDetails,
+        enableBatchedOperations: true,
+
+        // TODO: support this
+        sizeInBytes: 0,
+
+        subscriptionCount: topic.sb_subscriptions().length,
       },
     })
   },

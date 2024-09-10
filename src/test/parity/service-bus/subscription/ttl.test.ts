@@ -1,7 +1,6 @@
 import { Temporal } from "@js-temporal/polyfill"
 import delay from "delay"
 import { fixturedTest } from "test/fixtured-test.js"
-import { describe } from "vitest"
 
 fixturedTest(
   "message ttl is respected",

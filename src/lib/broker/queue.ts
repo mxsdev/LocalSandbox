@@ -29,17 +29,11 @@ import {
   getQueueFromStoreOrThrow,
   getSubscriptionFromStoreOrThrow,
   getTopicFromStoreOrThrow,
-  populateMessageWithDefaultExpiryTime,
 } from "./util.js"
 import {
   MinPriorityQueue,
   PriorityQueue,
 } from "@datastructures-js/priority-queue"
-import {
-  parseRheaMessage,
-  parseRheaMessageBody,
-} from "../amqp/parse-message.js"
-import { c } from "rhea/typings/types.js"
 import { SessionCannotBeLockedError, SessionRequiredError } from "./errors.js"
 
 interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
@@ -672,11 +666,27 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         }
       }
 
-      if (queue.properties.defaultMessageTimeToLive) {
-        populateMessageWithDefaultExpiryTime(
-          message,
-          queue.properties.defaultMessageTimeToLive,
+      const defaultMessageTimeToLive =
+        queue.properties.defaultMessageTimeToLive ??
+        (queue._model === "sb_subscription"
+          ? queue.sb_topic().properties.defaultMessageTimeToLive
+          : undefined) ??
+        "P10675199DT2H48M5.4775807S"
+
+      const defaultMessageTimeToLiveMs = Temporal.Duration.from(
+        defaultMessageTimeToLive,
+      ).total("milliseconds")
+
+      if (!message.absolute_expiry_time) {
+        // TODO: check if changing the default TTL affects in-flight messages,
+        // or just newly scheduled ones
+        const creation_time = new Date(
+          (message.creation_time
+            ? new Date(message.creation_time).getTime()
+            : Date.now()) + defaultMessageTimeToLiveMs,
         )
+
+        message.absolute_expiry_time = creation_time
       }
 
       const scheduled_enqueued_time = message.message_annotations?.[
@@ -1075,7 +1085,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     ;(sender as any).local.attach.properties = {
       // TODO: support session locking
       "com.microsoft:locked-until-utc": unserializedLongToArrayLike.parse(
-        Long.fromNumber(Date.now() + 100000)
+        Long.fromNumber(Date.now() + 9999999999999)
           .mul(10000)
           .add(621355968000000000),
       ),
@@ -1342,8 +1352,13 @@ export class BrokerTopic<M extends TaggedMessage> {
   get messageCountDetails(): MessageCountDetails {
     return {
       scheduledMessageCount: this.message_scheduler.messages.length,
+      // TODO: implement this
       activeMessageCount: 0,
       transferDeadLetterMessageCount: 0,
+      // TODO: implement this
+      deadLetterMessageCount: 0,
+      // TODO: implement this
+      transferMessageCount: 0,
     }
   }
 

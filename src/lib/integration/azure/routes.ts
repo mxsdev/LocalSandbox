@@ -27,6 +27,7 @@ import {
   sbTopic,
   sbTopicProperties,
 } from "../../../../output/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/topics.js"
+import { entityStatus } from "../../../../output/servicebus/resource-manager/common/v1/definitions.js"
 
 export const DEFAULT_SUBSCRIPTION_DISPLAY_NAME =
   "LocalSandbox Test Subscription"
@@ -67,9 +68,30 @@ const bearerAuthMiddleware: Middleware<
   return await next(req, ctx)
 }
 
+const queueOrTopicExcludesDefaults = {
+  maxSizeInMegabytes: true,
+  requiresDuplicateDetection: true,
+  enablePartitioning: true,
+  enableExpress: true,
+  maxMessageSizeInKilobytes: true,
+} as const
+
+const queueOrTopicDefaults = {
+  maxSizeInMegabytes: sbQueueProperties.shape.maxSizeInMegabytes.default(1024),
+  requiresDuplicateDetection:
+    sbQueueProperties.shape.requiresDuplicateDetection.default(false),
+  enablePartitioning: sbQueueProperties.shape.enablePartitioning.default(false),
+  enableExpress: sbQueueProperties.shape.enableExpress.default(false),
+  maxMessageSizeInKilobytes:
+    sbQueueProperties.shape.maxMessageSizeInKilobytes.default(256),
+} as const satisfies Record<keyof typeof queueOrTopicExcludesDefaults, unknown>
+
 const queueOrSubscriptionExcludesDefaults = {
   maxDeliveryCount: true,
   lockDuration: true,
+  requiresSession: true,
+  deadLetteringOnMessageExpiration: true,
+  duplicateDetectionHistoryTimeWindow: true,
 } as const
 
 const queueOrSubscriptionDefaults = {
@@ -87,6 +109,13 @@ const queueOrSubscriptionDefaults = {
       // TODO: get this error message accurate to Azure
       "Lock duration cannot exceed 5 minutes",
     ),
+  requiresSession: sbQueueProperties.shape.requiresSession.default(false),
+  deadLetteringOnMessageExpiration:
+    sbQueueProperties.shape.deadLetteringOnMessageExpiration.default(false),
+  duplicateDetectionHistoryTimeWindow:
+    sbQueueProperties.shape.duplicateDetectionHistoryTimeWindow.default(
+      "PT10M",
+    ),
 } as const satisfies Record<
   keyof typeof queueOrSubscriptionExcludesDefaults,
   unknown
@@ -96,6 +125,7 @@ const queueLikeExcludesDefaults = {
   defaultMessageTimeToLive: true,
   duplicateDetectionHistoryTimeWindow: true,
   autoDeleteOnIdle: true,
+  status: true,
 } as const
 
 const queueLikeDefaults = {
@@ -120,6 +150,7 @@ const queueLikeDefaults = {
       // TODO: get this error message accurate to Azure
       "autoDeleteOnIdle cannot be less than 5 minutes",
     ),
+  status: entityStatus.optional().default("Active"),
 } as const satisfies Record<keyof typeof queueLikeExcludesDefaults, unknown>
 
 export const azure_routes = createIntegration({
@@ -199,9 +230,14 @@ export const azure_routes = createIntegration({
           properties: sbTopicProperties
             .omit({
               ...queueLikeExcludesDefaults,
+              ...queueOrTopicExcludesDefaults,
+              supportOrdering: true,
             })
             .extend({
               ...queueLikeDefaults,
+              ...queueOrTopicDefaults,
+              supportOrdering:
+                sbTopicProperties.shape.supportOrdering.default(true),
             })
             .default({}),
 
@@ -242,10 +278,12 @@ export const azure_routes = createIntegration({
             .omit({
               ...queueLikeExcludesDefaults,
               ...queueOrSubscriptionExcludesDefaults,
+              ...queueOrTopicExcludesDefaults,
             })
             .extend({
               ...queueLikeDefaults,
               ...queueOrSubscriptionDefaults,
+              ...queueOrTopicDefaults,
             })
             .default({}),
 

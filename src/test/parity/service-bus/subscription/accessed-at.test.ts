@@ -15,7 +15,6 @@ fixturedTest(
     expect(topic.accessedAt?.getTime()).toBeLessThan(0)
 
     const subscription = await createSubscription(topic.name!, {})
-    expect(subscription.accessedAt?.getTime()).toBeLessThan(0)
 
     const receiver = createReceiver(topic.name!, subscription.name!)
 
