@@ -144,14 +144,14 @@ export abstract class BrokerServer {
         : {}),
     })
 
-    await new Promise<void>((res, rej) => {
+    await new Promise<void>((resolve, reject) => {
       server.addListener("listening", () => {
         this.logger?.info(`AMQP Listening on port ${this.opts.port}`)
-        res()
+        resolve()
       })
 
       server.addListener("error", (e) => {
-        rej(e)
+        reject(e)
       })
     }).finally(() => {
       server.removeAllListeners("listening")

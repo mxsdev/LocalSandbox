@@ -1,5 +1,4 @@
-import rhea, {
-  message,
+import {
   type Session,
   type Delivery,
   type Message,
@@ -7,7 +6,7 @@ import rhea, {
   SenderEvents,
 } from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
-import { type Logger, P } from "pino"
+import type { Logger } from "pino"
 import { Constants } from "@azure/core-amqp"
 import Long from "long"
 import {
@@ -36,10 +35,7 @@ import {
   getSubscriptionFromStoreOrThrow,
   getTopicFromStoreOrThrow,
 } from "./util.js"
-import {
-  MinPriorityQueue,
-  PriorityQueue,
-} from "@datastructures-js/priority-queue"
+import { PriorityQueue } from "@datastructures-js/priority-queue"
 import { SessionCannotBeLockedError, SessionRequiredError } from "./errors.js"
 
 interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
@@ -1077,11 +1073,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       [SenderEvents.rejected]: (e: { delivery: Delivery; sender: Sender }) => {
         this.logger?.debug(Object.keys(e), "sender rejected message")
 
-        const message = this.updateConsumerDisposition(
-          e.sender,
-          e.delivery,
-          "rejected",
-        )
+        this.updateConsumerDisposition(e.sender, e.delivery, "rejected")
       },
     }
 

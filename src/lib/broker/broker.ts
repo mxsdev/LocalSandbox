@@ -398,7 +398,7 @@ export class AzureServiceBusBroker extends BrokerServer {
                     )
                   ) {
                     this.logger?.warn(
-                      `Tried to schedule sequence ${sequenceNumber} which was not found!`,
+                      `Tried to schedule sequence ${sequenceNumber.toString()} which was not found!`,
                     )
                   }
                 }
@@ -413,7 +413,7 @@ export class AzureServiceBusBroker extends BrokerServer {
                 const {
                   [Constants.sessionIdMapKey]: sessionId,
                   // TODO: do we need to correlate w/ sequence number and "replay" certain messages?
-                  [Constants.fromSequenceNumber]: sequenceNumber,
+                  // [Constants.fromSequenceNumber]: sequenceNumber,
                   [Constants.messageCount]: messageCount,
                 } = parsed.data.body
 

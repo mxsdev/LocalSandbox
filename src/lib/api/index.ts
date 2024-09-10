@@ -1,4 +1,3 @@
-import { PassThrough } from "node:stream"
 import {
   createWithEdgeSpec,
   type EdgeSpecRouteMap,
@@ -8,7 +7,6 @@ import { z } from "zod"
 import { routeBundleFromRouteMap } from "../edgespec-util/route-bundle-from-route-map.js"
 import { createWithDefaultExceptionHandling } from "edgespec/middleware/index.js"
 import { createAzureIntegration } from "../integration/index.js"
-import { getLogger } from "../logger/index.js"
 import type { Logger } from "pino"
 import { AzureServiceBusBroker } from "../broker/broker.js"
 import { azure_routes } from "../integration/azure/routes.js"

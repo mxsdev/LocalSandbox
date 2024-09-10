@@ -52,10 +52,6 @@ export interface _QualifiedSubscriptionId extends _QualifiedTopicId {
   subscription_name: string
 }
 
-interface _QualifiedQueueIdWithSubqueueType extends _QualifiedQueueId {
-  subqueue: SubqueueType | undefined
-}
-
 export type QualifiedQueueOrSubscriptionIdWithSubqueueType = (
   | _QualifiedQueueId
   | _QualifiedSubscriptionId
