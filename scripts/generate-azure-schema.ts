@@ -1,25 +1,11 @@
-import jsStringEscape from "js-string-escape"
 import fs from "fs/promises"
-import SwaggerParser from "@apidevtools/swagger-parser"
-import { Spec } from "swagger-schema-official"
-import type { OpenAPIV2 } from "openapi-types"
-import { isReferenceObject, type OpenAPIObject } from "openapi3-ts/oas31"
-import { resolveConfig } from "prettier"
-import {
-  generateZodClientFromOpenAPI,
-  getZodClientTemplateContext,
-} from "openapi-zod-client"
-import { JsonSchema, jsonSchemaToZod } from "json-schema-to-zod"
 import path from "node:path"
-import { z } from "zod"
 import {
   convertAPISchemaToZod,
   convertToTsFile,
 } from "../src/lib/openapi/convert-to-zod.js"
-import Queue from "queue"
 import parserTypescript from "prettier/parser-typescript"
 import prettier, { type Options as PrettierOptions } from "prettier"
-import { getLogger } from "../src/lib/logger/index.js"
 
 async function maybePretty(
   input: string,

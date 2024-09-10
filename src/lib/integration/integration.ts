@@ -1,9 +1,7 @@
 import z from "zod"
-import { Mutex } from "async-mutex"
 import {
   type CreateWithRouteSpecFn,
   type EdgeSpecRouteBundle,
-  type EdgeSpecRouteFn,
   type EdgeSpecRouteFnFromSpecs,
   type GetAuthMiddlewaresFromGlobalSpec,
   type GlobalSpec,
@@ -189,8 +187,6 @@ class Model<
     return new Model(this.spec, models, this.modelName)
   }
 
-  protected mutex = new Mutex()
-
   _type!: SpecWithRelationalJoin<Root, Spec, ModelName> &
     SpecWithRelationalId<Root, Spec>
 
@@ -297,10 +293,6 @@ class ModelSelectBuilder<
   Output = SpecWithRelationalJoin<Root, Spec, ModelName> &
     SpecWithRelationalId<Root, Spec>,
 > {
-  private get mutex() {
-    return this.root["mutex"]
-  }
-
   whereRules: ((val: SpecWhereCheck<Root, Spec, ModelName>) => boolean)[] = []
 
   constructor(private root: Model<Root, Spec, any>) {}

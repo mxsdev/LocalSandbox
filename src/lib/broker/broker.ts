@@ -21,21 +21,14 @@ import {
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import {
   getQualifiedIdFromModel,
-  getMessageDestinationFromStoreOrThrow,
   getQueueOrTopicOrSubscriptionFromStoreOrThrow,
-  isQualifiedTopicId,
   isQualifiedMessageSourceId,
-  isQualifiedMessageDestinationId,
   isQualifiedQueueId,
 } from "./util.js"
-import { Constants, ErrorNameConditionMapper } from "@azure/core-amqp"
+import { Constants } from "@azure/core-amqp"
 import { Deque } from "@datastructures-js/deque"
 import { z } from "zod"
-import {
-  serializedLong,
-  unserializedLongToArrayLike,
-  unserializedLongToBufferLike,
-} from "../util/long.js"
+import { serializedLong } from "../util/long.js"
 import { BrokerConstants } from "./constants.js"
 import { unreorderLockToken } from "../util/service-bus.js"
 import { Middleware } from "edgespec"
@@ -44,16 +37,9 @@ import {
   BrokerStore,
   QualifiedMessageDestinationId,
   QualifiedMessageSourceId,
-  QualifiedQueueOrTopicOrSubscriptionId,
-  SubqueueType,
 } from "./types.js"
 import { parseBrokerURL } from "./url.js"
-import {
-  SessionCannotBeLockedError,
-  SessionRequiredError,
-  StoreBusError,
-} from "./errors.js"
-import { ServiceBusError } from "@azure/service-bus"
+import { StoreBusError } from "./errors.js"
 
 type ConnectionQueueLinkId =
   | QualifiedMessageDestinationId

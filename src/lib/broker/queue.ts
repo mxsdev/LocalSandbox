@@ -12,7 +12,7 @@ import {
 } from "../util/long.js"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import { uuidToString } from "../util/uuid.js"
-import { MessageCountDetails } from "@azure/arm-servicebus"
+import type { MessageCountDetails } from "@azure/arm-servicebus"
 import { BrokerConstants } from "./constants.js"
 import { z } from "zod"
 import {

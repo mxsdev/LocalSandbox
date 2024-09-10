@@ -1,14 +1,8 @@
-import SwaggerParser, { parse } from "@apidevtools/swagger-parser"
-import type {
-  Parameter,
-  Reference,
-  Response,
-  Schema,
-  Spec,
-} from "swagger-schema-official"
+import SwaggerParser from "@apidevtools/swagger-parser"
+import type { Parameter, Response, Schema, Spec } from "swagger-schema-official"
 import { z } from "zod"
 import path from "node:path"
-import { type JsonSchema, jsonSchemaToZod } from "json-schema-to-zod"
+import { jsonSchemaToZod } from "json-schema-to-zod"
 import { camelCase } from "change-case"
 import jsStringEscape from "js-string-escape"
 
@@ -185,6 +179,8 @@ export const convertAPISchemaToZod = async (
 
             return refItem
           }
+
+          return undefined
         },
       })
     }
@@ -206,6 +202,8 @@ export const convertAPISchemaToZod = async (
         }
 
         deps.add(ref)
+
+        return undefined
       }
 
       const content = refOrParse(

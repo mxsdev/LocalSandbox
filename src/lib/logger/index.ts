@@ -1,7 +1,6 @@
 import pino, { type DestinationStream } from "pino"
 const { default: createLogger } = pino
 import pretty from "pino-pretty"
-import { SonicBoom } from "sonic-boom"
 
 interface LoggerOptions {
   app?: string

@@ -1,20 +1,9 @@
-import { test } from "vitest"
-
-import {
-  ConnectionConfig,
-  ConnectionContextBase,
-  Constants,
-} from "@azure/core-amqp"
-import { ListenOptions } from "net"
 import {
   Connection,
   ConnectionEvents,
   ConnectionOptions,
-  ReceiverEvents,
   SenderEvents,
-  Container,
   SessionEvents,
-  AwaitableSender,
 } from "rhea-promise"
 
 const port = 5671
