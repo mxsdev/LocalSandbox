@@ -1,0 +1,10 @@
+{
+    "root": true,
+    "plugins": ["simple-import-sort", "unused-imports"],
+    "overrides": [
+        {
+            "files": ["*.ts", "*.tsx"],
+            "extends": ["standard-with-typescript", "prettier"]
+        }
+    ]
+}
