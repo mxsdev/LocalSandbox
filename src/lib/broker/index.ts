@@ -1,17 +1,5 @@
-import {
-  ConnectionConfig,
-  ConnectionContextBase,
-  Constants,
-} from "@azure/core-amqp"
 import type { ListenOptions } from "net"
-import {
-  Connection,
-  ConnectionEvents,
-  ConnectionOptions,
-  ReceiverEvents,
-  SenderEvents,
-  Container,
-} from "rhea-promise"
+import { Container } from "rhea-promise"
 
 export async function serveAMQP(port: number) {
   const container = new Container({})
@@ -21,4 +9,6 @@ export async function serveAMQP(port: number) {
   const server = container.listen(containerListenOptions)
 
   container.on("sender_open", () => {})
+
+  return server
 }
