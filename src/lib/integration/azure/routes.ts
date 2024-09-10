@@ -182,14 +182,14 @@ export const azure_routes = createIntegration({
             new_timeout = setTimeout(() => {
               args.store
                 .delete()
-                .where((q) => q.id === args.new_val?.id ?? args.old_val?.id)
+                .where((q) => q.id === args.new_val?.id)
                 .execute()
             }, Temporal.Duration.from(args.new_val?.properties.autoDeleteOnIdle).total("milliseconds"))
           }
 
           args.store
             .update()
-            .where((q) => q.id === args.new_val?.id ?? args.old_val?.id)
+            .where((q) => q.id === (args.new_val?.id ?? args.old_val?.id))
             .set({
               autoDeleteTimeout: new_timeout,
             })

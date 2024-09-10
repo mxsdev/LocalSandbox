@@ -1,11 +1,10 @@
 import getPort from "get-port"
 import { afterAll, beforeAll } from "vitest"
-import { serveHTTPS } from "../lib/api/serve.js"
+import { serveHTTPS } from "lib/api/serve.js"
 import http from "node:http"
 import util from "node:util"
-import { AzureServiceBusBroker } from "../lib/broker/broker.js"
-import { getTestLogger } from "./get-test-logger.js"
-import { azure_service_bus_broker } from "../lib/api/index.js"
+import { AzureServiceBusBroker } from "lib/broker/broker.js"
+import { azure_service_bus_broker } from "lib/api/index.js"
 
 let server: http.Server | undefined
 let broker: AzureServiceBusBroker | undefined

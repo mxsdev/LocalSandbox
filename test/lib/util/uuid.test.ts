@@ -1,6 +1,6 @@
 import { test, describe } from "vitest"
-import { uuidToString } from "../../../lib/util/uuid.js"
-import { unreorderLockToken } from "../../../lib/util/service-bus.js"
+import { uuidToString } from "lib/util/uuid.js"
+import { unreorderLockToken } from "lib/util/service-bus.js"
 
 describe("uuid", () => {
   test("can parse buffer to uuid string", ({ expect }) => {

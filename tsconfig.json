@@ -14,7 +14,7 @@
         
         "checkJs": false,
 
-        "isolatedModules": true, // https://preconstruct.tools/guides/building-typescript-packages
+        "isolatedModules": true,
         "noEmit": true,
         "allowSyntheticDefaultImports": true,
 
@@ -23,7 +23,9 @@
         "paths": {
             "edgespec": ["./src/lib/edgespec/index.ts"],
             "edgespec/*": ["./src/lib/edgespec/*"],
-            "test/*": ["./src/test/*"]
+            "test/*": ["./test/*"],
+            "lib/*": ["./src/lib/*"]
         }
-    }
+    },
+    "include": ["src/**/*.ts", "test/**/*.ts"]
 }

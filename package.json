@@ -6,10 +6,11 @@
   "main": "index.js",
   "scripts": {
     "test": "vitest",
-    "test:e2e": "cross-env TEST_AZURE_E2E=true vitest --testTimeout=20000 --dir=./src/test/parity",
+    "test:e2e": "cross-env TEST_AZURE_E2E=true vitest --testTimeout=20000 --dir=./test/parity",
     "dev": "tsx --watch ./src/entrypoint/index.ts",
     "generate:azure": "tsx ./scripts/generate-azure-schema.ts",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -59,6 +60,7 @@
     "patch-package": "^8.0.0",
     "tsx": "^4.16.2",
     "type-fest": "^4.23.0",
+    "typescript": "^5.6.2",
     "vite-tsconfig-paths": "^5.0.1",
     "vitest": "^2.0.4"
   }

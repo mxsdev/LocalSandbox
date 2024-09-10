@@ -1,8 +1,8 @@
 import { Constants } from "@azure/core-amqp"
 import Long from "long"
 import { fixturedTest } from "test/fixtured-test.js"
-import { BrokerConstants } from "../../lib/broker/constants.js"
-import { unserializedLongToArrayLike } from "../../lib/util/long.js"
+import { BrokerConstants } from "lib/broker/constants.js"
+import { unserializedLongToArrayLike } from "lib/util/long.js"
 
 fixturedTest(
   "sends message with sequence number",

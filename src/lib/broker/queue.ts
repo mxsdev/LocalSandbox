@@ -1367,7 +1367,7 @@ export class BrokerTopic<M extends TaggedMessage> {
     force_reallocation = false,
   ): ScheduledMessage<M>[] {
     // TODO: determine why this works this way (discovered in
-    // src/test/parity/service-bus/subscription/scheduled.test.ts)
+    // test/parity/service-bus/subscription/scheduled.test.ts)
     const message = this.sequence_number_factory.bindToMessage(
       _message,
       force_reallocation,

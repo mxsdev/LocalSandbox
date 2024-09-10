@@ -10,14 +10,14 @@ import {
 } from "@azure/arm-servicebus"
 import { SubscriptionClient } from "@azure/arm-subscriptions"
 import type { ServiceClientOptions } from "@azure/core-client"
-import { LocalSandboxAzureCredential } from "../lib/service-client/local-sandbox-azure-credential.js"
+import { LocalSandboxAzureCredential } from "lib/service-client/local-sandbox-azure-credential.js"
 import { ResourceManagementClient } from "@azure/arm-resources"
 import { Logger } from "pino"
 import {
   createNewStore,
   IntegrationStore,
-} from "../lib/integration/integration.js"
-import { azure_routes } from "../lib/integration/azure/routes.js"
+} from "lib/integration/integration.js"
+import { azure_routes } from "lib/integration/azure/routes.js"
 import { getTestLogger } from "./get-test-logger.js"
 import {
   ServiceBusClient,

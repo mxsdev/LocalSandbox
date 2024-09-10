@@ -1,32 +1,25 @@
 import { fixturedTest } from "test/fixtured-test.js"
-import { BrokerConstants } from "../../../../lib/broker/constants.js"
+import { BrokerConstants } from "lib/broker/constants.js"
 
 fixturedTest(
   "expires messages after max delivery count and sends to DLQ",
   async ({ azure_queue, expect }) => {
-    const {
-      createSender,
-      createReceiver,
-      createQueue,
-      createTopic,
-      createSubscription,
-    } = azure_queue
+    const { createSender, createReceiver, createQueue } = azure_queue
 
     const dlq = await createQueue({})
-    const topic = await createTopic({})
-    const subscription = await createSubscription(topic.name!, {
+    const queue = await createQueue({
       maxDeliveryCount: 2,
       forwardDeadLetteredMessagesTo: dlq.name!,
     })
 
-    const sender = createSender(topic.name!)
+    const sender = createSender(queue.name!)
 
     await sender.sendMessages({
       body: "hello world!",
     })
 
     {
-      const receiver = createReceiver(topic.name!, subscription.name!)
+      const receiver = createReceiver(queue.name!)
 
       const [message] = await receiver.receiveMessages(1, {
         maxWaitTimeInMs: 0,
@@ -38,7 +31,7 @@ fixturedTest(
     }
 
     {
-      const receiver = createReceiver(topic.name!, subscription.name!)
+      const receiver = createReceiver(queue.name!)
 
       const [message] = await receiver.receiveMessages(1, {
         maxWaitTimeInMs: 0,
@@ -60,9 +53,7 @@ fixturedTest(
       expect(message?.deadLetterErrorDescription).toBe(
         BrokerConstants.errors.maxDeliveryCountExceeded.description,
       )
-      expect(message?.deadLetterSource).toBe(
-        `${topic.name!}/Subscriptions/${subscription.name!}`,
-      )
+      expect(message?.deadLetterSource).toBe(queue.name!)
     }
   },
 )

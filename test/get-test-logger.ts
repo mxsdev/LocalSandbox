@@ -1,5 +1,5 @@
 import { PassThrough } from "stream"
-import { getLogger } from "../lib/logger/index.js"
+import { getLogger } from "lib/logger/index.js"
 
 export const getTestLogger = (app?: string) => {
   const stream = new PassThrough()

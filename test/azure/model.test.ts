@@ -1,8 +1,5 @@
 import { test } from "vitest"
-import {
-  createModelSpecs,
-  getStore,
-} from "../../lib/integration/integration.js"
+import { createModelSpecs, getStore } from "lib/integration/integration.js"
 import { z } from "zod"
 import { randomUUID } from "node:crypto"
 

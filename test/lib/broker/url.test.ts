@@ -1,5 +1,5 @@
 import { test } from "vitest"
-import { parseBrokerURL } from "../../../lib/broker/url.js"
+import { parseBrokerURL } from "lib/broker/url.js"
 
 test("can parse queue or topic URL", ({ expect }) => {
   const url = new URL("sb://localhost/subscription/rg/namespace/queue-or-topic")
