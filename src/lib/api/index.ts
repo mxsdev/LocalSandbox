@@ -53,6 +53,7 @@ export const createApiBundle = () => {
     {
       logger: amqp_logger.logger,
       cleanup: amqp_logger.cleanup,
+      tls: false,
     },
   )
 

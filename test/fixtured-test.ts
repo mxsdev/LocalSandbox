@@ -68,10 +68,10 @@ const getAzureContext = (
 
   const port = testPort
   const subscriptionId = e2e_config?.AZURE_SUBSCRIPTION_ID ?? randomUUID()
-  const endpoint = new URL(`https://127.0.0.1:${port}/azure`)
+  const endpoint = new URL(`http://localhost:${port}/azure`)
 
   const sb_port = testServiceBusPort
-  const sb_local_endpoint = new URL(`https://127.0.0.1:${sb_port}`)
+  const sb_local_endpoint = new URL(`http://localhost:${sb_port}`)
 
   const local_sandbox_credential = new LocalSandboxAzureCredential(
     subscriptionId,
@@ -87,6 +87,8 @@ const getAzureContext = (
       ? {}
       : {
           endpoint: endpoint.toString(),
+          allowInsecureConnection: true,
+          pipeline: local_sandbox_credential.pipeline,
         }),
     retryOptions: {
       maxRetries: 0,
@@ -154,7 +156,7 @@ const getAzureContext = (
 
   const sb_connection_string = e2e_config?.TEST_AZURE_E2E
     ? e2e_config.AZURE_SERVICE_BUS_CONNECTION_STRING
-    : `Endpoint=sb://localhost/${subscriptionId}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`
+    : `Endpoint=sb://localhost/${subscriptionId}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password;UseDevelopmentEmulator=true`
 
   const sb_client = new ServiceBusClient(sb_connection_string, {
     ...(e2e_config?.TEST_AZURE_E2E
@@ -232,8 +234,11 @@ const getAzureContextWithQueueFixtures = async (
 
   if (!e2e_config) {
     // ensure resource group, namespace are created
-    await azure.rg()
+    console.log("1")
+    const rg = await azure.rg()
+    console.log(rg)
     await azure.sb.namespace()
+    console.log("3")
   }
 
   const createSender = (

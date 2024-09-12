@@ -1,6 +1,6 @@
 import getPort from "get-port"
 import { afterAll, beforeAll } from "vitest"
-import { serveHTTPS } from "lib/api/serve.js"
+import { serve, serveHTTPS } from "lib/api/serve.js"
 import type http from "node:http"
 import util from "node:util"
 import type { AzureServiceBusBroker } from "lib/broker/broker.js"
@@ -14,9 +14,8 @@ export let testServiceBusPort: number | undefined
 beforeAll(async () => {
   const { amqp_server, bundle } = createApiBundle()
 
-  process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
   testPort = await getPort()
-  server = await serveHTTPS(bundle, testPort)
+  server = await serve(bundle, testPort)
 
   testServiceBusPort = await getPort()
   amqp_server.port = testServiceBusPort

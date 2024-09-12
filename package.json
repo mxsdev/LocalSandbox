@@ -48,6 +48,7 @@
     "@types/node": "^22.5.0",
     "@types/pino": "^7.0.5",
     "@types/swagger-schema-official": "^2.0.25",
+    "@typespec/ts-http-runtime": "^1.0.0-alpha.20240611.3",
     "bundle-require": "^5.0.0",
     "change-case": "^5.4.4",
     "cross-env": "^7.0.3",
