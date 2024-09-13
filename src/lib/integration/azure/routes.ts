@@ -69,46 +69,6 @@ const bearerAuthMiddleware: Middleware<
     .onAllConflictDoNothing()
     .executeTakeFirstOrThrow()
 
-  if (!ctx.env.LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES) {
-    if (subscription_id === ctx.env.LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID) {
-      // create default resources
-      if (ctx.env.LOCALSANDBOX_DEFAULT_RESOURCE_GROUP) {
-        const resource_group = ctx.store.resource_group
-          .insert()
-          .values({
-            location: ctx.env.LOCALSANDBOX_DEFAULT_LOCATION,
-            subscription_id: ctx.env.LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID,
-            name: ctx.env.LOCALSANDBOX_DEFAULT_RESOURCE_GROUP,
-          })
-          .onAllConflictDoNothing()
-          .executeTakeFirstOrThrow()
-
-        if (ctx.env.LOCALSANDBOX_DEFAULT_NAMESPACE) {
-          const namespace = ctx.store.sb_namespace
-            .insert()
-            .values({
-              location: ctx.env.LOCALSANDBOX_DEFAULT_LOCATION,
-              resource_group_id: resource_group.id,
-              name: ctx.env.LOCALSANDBOX_DEFAULT_NAMESPACE,
-            })
-            .onAllConflictDoNothing()
-            .executeTakeFirstOrThrow()
-
-          if (ctx.env.LOCALSANDBOX_DEFAULT_QUEUE) {
-            ctx.store.sb_queue
-              .insert()
-              .values({
-                name: ctx.env.LOCALSANDBOX_DEFAULT_QUEUE,
-                sb_namespace_id: namespace.id,
-              })
-              .onAllConflictDoNothing()
-              .executeTakeFirstOrThrow()
-          }
-        }
-      }
-    }
-  }
-
   ctx.subscription = subscription
 
   return await next(req, ctx)
