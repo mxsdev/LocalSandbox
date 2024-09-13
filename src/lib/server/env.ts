@@ -3,10 +3,25 @@ import { z } from "zod"
 export const DEFAULT_LOCALSANDBOX_PORT = 7329
 export const DEFAULT_LOCALSANDBOX_AMQP_PORT = 5672
 
+export const DEFAULT_RESOURCE_NAME = "default" as const
+
+const resource_name = z.union([
+  z.enum(["disabled", "false"]).transform(() => undefined),
+  z.string().optional().default(DEFAULT_RESOURCE_NAME),
+])
+
 const envSchema = z.object({
   LOG_LEVEL: z.string().default("info"),
   LOCALSANDBOX_PORT: z.coerce.number().default(7329),
   LOCALSANDBOX_AMQP_PORT: z.coerce.number().default(5672),
+
+  LOCALSANDBOX_DEFAULT_LOCATION: z.string().optional().default("westus2"),
+
+  LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES: z.boolean().optional().default(false),
+  LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID: resource_name,
+  LOCALSANDBOX_DEFAULT_RESOURCE_GROUP: resource_name,
+  LOCALSANDBOX_DEFAULT_NAMESPACE: resource_name,
+  LOCALSANDBOX_DEFAULT_QUEUE: resource_name,
 })
 
 export type ServerEnv = z.output<typeof envSchema>

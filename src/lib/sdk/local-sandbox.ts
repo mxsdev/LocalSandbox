@@ -8,6 +8,7 @@ import {
   type ServiceClientOptions,
 } from "@azure/core-client"
 import { bearerTokenAuthenticationPolicyName } from "@typespec/ts-http-runtime"
+import { DEFAULT_RESOURCE_NAME } from "lib/server/env.js"
 
 export class LocalSandbox implements TokenCredential {
   readonly pipeline
@@ -26,16 +27,17 @@ export class LocalSandbox implements TokenCredential {
     return `http://localhost:${this.port}/azure`
   }
 
-  constructor(
-    private readonly id: string,
-    opts?: { port: number },
-  ) {
+  readonly subscriptionId: string
+
+  constructor(subscriptionId?: string | undefined, opts?: { port: number }) {
+    this.subscriptionId = subscriptionId ?? DEFAULT_RESOURCE_NAME
+
     this.pipeline = createClientPipeline({})
 
     this.pipeline.addPolicy({
       name: bearerTokenAuthenticationPolicyName,
       sendRequest: async (request, next) => {
-        request.headers.set("Authorization", `Bearer ${this.id}`)
+        request.headers.set("Authorization", `Bearer ${this.subscriptionId}`)
         return await next(request)
       },
     })
@@ -54,7 +56,7 @@ export class LocalSandbox implements TokenCredential {
     _options?: GetTokenOptions,
   ): Promise<AccessToken | null> {
     return {
-      token: this.id,
+      token: this.subscriptionId,
       expiresOnTimestamp: Infinity,
     }
   }

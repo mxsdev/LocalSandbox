@@ -27,15 +27,27 @@ import {
   sbTopicProperties,
 } from "generated/azure-rest-api-specs/servicebus/resource-manager/Microsoft.ServiceBus/stable/2021-11-01/topics.js"
 import { entityStatus } from "generated/azure-rest-api-specs/servicebus/resource-manager/common/v1/definitions.js"
+import { getServerEnv, type ServerEnv } from "lib/server/env.js"
 
 export const DEFAULT_SUBSCRIPTION_DISPLAY_NAME =
   "LocalSandbox Test Subscription"
 export const DEFAULT_SUBSCRIPTION_AUTHORIZATION_SOURCE =
   "https://localsandbox.io"
 
+const envMiddleware: Middleware<
+  {},
+  {
+    env: ServerEnv
+  }
+> = async (req, ctx, next) => {
+  ctx.env ??= getServerEnv()
+  return await next(req, ctx)
+}
+
 const bearerAuthMiddleware: Middleware<
   {
     store: IntegrationStore<typeof azure_routes>
+    env: ServerEnv
   },
   {
     subscription: IntegrationModel<typeof azure_routes, "subscription">
@@ -53,14 +65,49 @@ const bearerAuthMiddleware: Middleware<
 
   const subscription = ctx.store.subscription
     .insert()
-    .values({
-      subscriptionId: subscription_id,
-      displayName: DEFAULT_SUBSCRIPTION_DISPLAY_NAME,
-      authorizationSource: DEFAULT_SUBSCRIPTION_AUTHORIZATION_SOURCE,
-      state: "Enabled",
-    })
+    .values({ subscriptionId: subscription_id })
     .onAllConflictDoNothing()
     .executeTakeFirstOrThrow()
+
+  if (!ctx.env.LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES) {
+    if (subscription_id === ctx.env.LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID) {
+      // create default resources
+      if (ctx.env.LOCALSANDBOX_DEFAULT_RESOURCE_GROUP) {
+        const resource_group = ctx.store.resource_group
+          .insert()
+          .values({
+            location: ctx.env.LOCALSANDBOX_DEFAULT_LOCATION,
+            subscription_id: ctx.env.LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID,
+            name: ctx.env.LOCALSANDBOX_DEFAULT_RESOURCE_GROUP,
+          })
+          .onAllConflictDoNothing()
+          .executeTakeFirstOrThrow()
+
+        if (ctx.env.LOCALSANDBOX_DEFAULT_NAMESPACE) {
+          const namespace = ctx.store.sb_namespace
+            .insert()
+            .values({
+              location: ctx.env.LOCALSANDBOX_DEFAULT_LOCATION,
+              resource_group_id: resource_group.id,
+              name: ctx.env.LOCALSANDBOX_DEFAULT_NAMESPACE,
+            })
+            .onAllConflictDoNothing()
+            .executeTakeFirstOrThrow()
+
+          if (ctx.env.LOCALSANDBOX_DEFAULT_QUEUE) {
+            ctx.store.sb_queue
+              .insert()
+              .values({
+                name: ctx.env.LOCALSANDBOX_DEFAULT_QUEUE,
+                sb_namespace_id: namespace.id,
+              })
+              .onAllConflictDoNothing()
+              .executeTakeFirstOrThrow()
+          }
+        }
+      }
+    }
+  }
 
   ctx.subscription = subscription
 
@@ -156,6 +203,7 @@ export const azure_routes = createIntegration({
   globalSpec: {
     authMiddleware: {},
     afterAuthMiddleware: [
+      envMiddleware,
       bearerAuthMiddleware,
       AzureServiceBusBroker.middleware(),
       withExternallyPopulatedLogger,
@@ -201,25 +249,57 @@ export const azure_routes = createIntegration({
     subscription: {
       primaryKey: "subscriptionId",
       schema: subscription
-        .omit({ id: true, subscriptionPolicies: true })
+        .omit({
+          id: true,
+          subscriptionPolicies: true,
+          displayName: true,
+          authorizationSource: true,
+          state: true,
+        })
         .required()
         .extend(
           subscription.pick({ id: true, subscriptionPolicies: true }).partial()
             .shape,
         )
+        .extend({
+          displayName: subscription.shape.displayName.default(
+            DEFAULT_SUBSCRIPTION_DISPLAY_NAME,
+          ),
+          authorizationSource: subscription.shape.authorizationSource.default(
+            DEFAULT_SUBSCRIPTION_AUTHORIZATION_SOURCE,
+          ),
+          state: subscription.shape.state.default("Enabled"),
+        })
         .transform((v) => ({
           ...v,
-          id: v.id ?? `/subscriptions/${v.subscriptionId}`,
+          id: `/subscriptions/${v.subscriptionId}`,
         })),
     },
     resource_group: {
       primaryKey: "id",
-      schema: resourceGroup.omit({ id: true }).extend({ id: z.string() }),
+      schema: resourceGroup
+        .omit({ id: true })
+        .extend({ id: z.any(), subscription_id: z.string() })
+        .transform((v) => ({
+          ...v,
+          id: `/subscriptions/${v.subscription_id}`,
+        })),
       hasOne: ["subscription"],
     },
     sb_namespace: {
       primaryKey: "id",
-      schema: sbNamespace.and(z.object({ id: z.string() })),
+      schema: sbNamespace
+        .and(
+          z.object({
+            id: z.any(),
+            resource_group_id: z.string(),
+            name: z.string(),
+          }),
+        )
+        .transform((v) => ({
+          ...v,
+          id: `${v.resource_group_id}/providers/Microsoft.ServiceBus/namespaces/${v.name}`,
+        })),
       hasOne: ["resource_group"],
     },
     sb_topic: {
@@ -271,26 +351,44 @@ export const azure_routes = createIntegration({
     },
     sb_queue: {
       primaryKey: "id",
-      schema: sbQueue.and(
-        z.object({
-          properties: sbQueueProperties
-            .omit({
-              ...queueLikeExcludesDefaults,
-              ...queueOrSubscriptionExcludesDefaults,
-              ...queueOrTopicExcludesDefaults,
-            })
-            .extend({
-              ...queueLikeDefaults,
-              ...queueOrSubscriptionDefaults,
-              ...queueOrTopicDefaults,
-            })
-            .default({}),
+      schema: sbQueue
+        .and(
+          z.object({
+            type: z
+              .literal("Microsoft.ServiceBus/namespaces/queues")
+              .optional()
+              .default("Microsoft.ServiceBus/namespaces/queues"),
+            id: z.any(),
+            name: z.string(),
+            sb_namespace_id: z.string(),
+            properties: sbQueueProperties
+              .omit({
+                ...queueLikeExcludesDefaults,
+                ...queueOrSubscriptionExcludesDefaults,
+                ...queueOrTopicExcludesDefaults,
+              })
+              .extend({
+                ...queueLikeDefaults,
+                ...queueOrSubscriptionDefaults,
+                ...queueOrTopicDefaults,
+              })
+              .default({}),
 
-          autoDeleteTimeout: zodTimeout.optional(),
-
-          id: z.string(),
-        }),
-      ),
+            autoDeleteTimeout: zodTimeout.optional(),
+          }),
+        )
+        .transform((v) => ({
+          ...v,
+          id: `${v.sb_namespace_id}/queues/${v.name}`,
+          properties: {
+            ...v.properties,
+            createdAt: v.properties.createdAt ?? new Date().toISOString(),
+            updatedAt: v.properties.updatedAt ?? new Date().toISOString(),
+            accessedAt:
+              v.properties.accessedAt ??
+              new Date(-62135568422000).toISOString(),
+          },
+        })),
       hasOne: ["sb_namespace"],
     },
   }),

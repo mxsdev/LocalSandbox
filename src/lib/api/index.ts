@@ -12,7 +12,7 @@ import { AzureServiceBusBroker } from "../broker/broker.js"
 import { azure_routes } from "../integration/azure/routes.js"
 import { withLogger } from "../logger/with-logger.js"
 import { getTestLogger } from "test/get-test-logger.js"
-import type { BrokerServer } from "lib/broker/server.js"
+import type { BrokerServer } from "lib/broker/broker-server.js"
 
 const routeLoggingMiddleware: Middleware<{}, { logger: Logger }> = async (
   req,

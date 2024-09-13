@@ -31,9 +31,8 @@ azure_routes.implementRoute(
       .insert()
       .values({
         ...parameters,
-        id: `${resource_group.id}/providers/Microsoft.ServiceBus/namespaces/${req.routeParams.namespaceName}`,
-        // TODO: support unique indexes
         location: resource_group.location,
+        // TODO: support unique indexes
         name: req.routeParams.namespaceName,
         resource_group_id: resource_group.id,
       })
