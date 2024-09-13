@@ -37,7 +37,6 @@
     "find-up": "^7.0.0",
     "kleur": "^4.1.5",
     "long": "^5.2.3",
-    "memoize": "^10.0.0",
     "next-route-matcher": "^1.0.2",
     "pino": "^9.3.2",
     "pino-pretty": "^11.2.2",
