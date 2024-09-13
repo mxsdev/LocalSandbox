@@ -18,7 +18,9 @@
     "noEmit": true,
     "allowSyntheticDefaultImports": true,
 
-    "target": "ES2021",
+    "resolveJsonModule": true,
+
+    "target": "ES2022",
     "module": "Node16",
     "paths": {
       "edgespec": ["./src/lib/edgespec/index.ts"],
@@ -32,6 +34,7 @@
     "src/**/*.ts",
     "test/**/*.ts",
     "./vitest.config.ts",
+    "./tsup.config.ts",
     "./scripts/**/*.ts"
   ]
 }

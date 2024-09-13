@@ -43,8 +43,13 @@ const withRouteSpec = createWithEdgeSpec({
   ],
 })
 
-export const createApiBundle = () => {
-  const amqp_logger = getTestLogger("amqp")
+export const createApiBundle = (
+  settings: {
+    amqp_logger?: { logger: Logger; cleanup?: () => Promise<void> }
+  } = {},
+) => {
+  let { amqp_logger } = settings
+  amqp_logger ??= getTestLogger("amqp")
 
   const store_bundle = azure_routes.createStoreBundle()
 

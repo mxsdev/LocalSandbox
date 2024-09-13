@@ -33,7 +33,10 @@ export const startServer: EdgeSpecAdapter<
 
   const { port } = opts
 
-  await new Promise<void>((resolve) => server.listen(port, resolve))
+  await new Promise<void>((resolve, reject) => {
+    server.on("error", reject)
+    server.listen(port, resolve)
+  })
 
   return server
 }

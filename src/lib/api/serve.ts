@@ -4,11 +4,7 @@ import { TEST_CERT, TEST_PK } from "../tls/index.js"
 import type { EdgeSpecRouteBundle } from "edgespec"
 
 export const serve = async (bundle: EdgeSpecRouteBundle, port: number) => {
-  const server = await startServer(bundle, {
-    port,
-  })
-
-  return server
+  return await startServer(bundle, { port })
 }
 
 export const serveHTTPS = async (bundle: EdgeSpecRouteBundle, port: number) => {

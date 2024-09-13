@@ -10,12 +10,11 @@ import {
   type BrokerSenderEvent,
   BrokerServer,
   type BrokerServerOpts,
-} from "./server.js"
-import {
+} from "./broker-server.js"
+import rhea, {
   type Receiver,
   type Sender,
   type Session,
-  generate_uuid,
   type Connection,
 } from "rhea"
 import { BrokerConsumerBalancer } from "./consumer-balancer.js"
@@ -372,7 +371,7 @@ export class AzureServiceBusBroker extends BrokerServer {
                     ...parsed.data.body.messages.flatMap(
                       ({ message: buffer, "message-id": mid }) =>
                         parseBatchOrMessage(buffer).map((v) => {
-                          v["message_id"] ??= mid ?? generate_uuid()
+                          v["message_id"] ??= mid ?? rhea.generate_uuid()
                           return v as typeof v & { message_id: string }
                         }),
                     ),
@@ -574,7 +573,7 @@ export class AzureServiceBusBroker extends BrokerServer {
           this.consumer_balancer.sendMessagesToQueue(
             queue,
             ...messages_to_enqueue.map((m) => {
-              m["message_id"] ??= generate_uuid()
+              m["message_id"] ??= rhea.generate_uuid()
               return m as typeof m & { message_id: string }
             }),
           )
@@ -699,14 +698,12 @@ export class AzureServiceBusBroker extends BrokerServer {
     opts?: BrokerServerOpts,
   ) {
     super(opts)
+    this.consumer_balancer = new BrokerConsumerBalancer(this.store, this.logger)
   }
 
   // TODO: cleanup
   // private readonly queue_consumers: Record<string, Sender> = {}
-  private readonly consumer_balancer = new BrokerConsumerBalancer(
-    this.store,
-    this.logger,
-  )
+  private readonly consumer_balancer
 
   get middleware() {
     return AzureServiceBusBroker.middleware(this)
