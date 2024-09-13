@@ -1,14 +1,16 @@
 import { createApiBundle } from "lib/api/index.js"
 import { serve } from "lib/api/serve.js"
 import { getLogger } from "lib/logger/index.js"
-import type { ServerEnv } from "./env.js"
+import { getServerEnv, type ServerEnv } from "./env.js"
 import { checkConfig } from "./check-config.js"
 import {
   isAddressInUseException,
   isErrnoException,
 } from "lib/util/is-errno-exception.js"
 
-export const startLocalSandboxServer = async ({ env }: { env: ServerEnv }) => {
+export const startLocalSandboxServer = async ({
+  env = getServerEnv(),
+}: { env?: ServerEnv } = {}) => {
   let on_complete: (() => void | Promise<void>)[] = []
 
   try {
