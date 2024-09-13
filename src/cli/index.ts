@@ -12,7 +12,6 @@ import {
   DEFAULT_LOCALSANDBOX_AMQP_PORT,
   DEFAULT_LOCALSANDBOX_PORT,
   getServerEnv,
-  type ServerEnv,
 } from "lib/server/env.js"
 import { checkConfig } from "lib/server/check-config.js"
 import Configstore from "configstore"
@@ -60,25 +59,12 @@ const checkServerRunning = async (config: StoreConfig) => {
   return res
 }
 
-const getEnvironmentVariableHelp = (
-  vals: Partial<Record<keyof ServerEnv, string>>,
-) => {
-  const max_width = Math.max(...Object.keys(vals).map((key) => key.length))
-
-  return [
-    "",
-    "Environment Variables:",
-    ...Object.entries(vals).map(([key, val]) => {
-      return `  ${key.padEnd(max_width)}  ${val}`
-    }),
-  ].join("\n")
-}
-
 const PORT_OPTION = new Option(
   "-p --port <PORT>",
   "Port to run the API server on",
 )
   .argParser((v) => z.coerce.number().parse(v))
+  .env("LOCALSANDBOX_PORT")
   .default(DEFAULT_LOCALSANDBOX_PORT)
 
 const AMQP_PORT_OPTION = new Option(
@@ -86,18 +72,14 @@ const AMQP_PORT_OPTION = new Option(
   "Port to run the AMQP broker on",
 )
   .argParser((v) => z.coerce.number().parse(v))
+  .env("LOCALSANDBOX_AMQP_PORT")
   .default(DEFAULT_LOCALSANDBOX_AMQP_PORT)
 
 const LOG_LEVEL_OPTION = new Option("-l --log-level <LEVEL>", "Log level")
+  .env("LOG_LEVEL")
   .choices(["info", "debug", "error", "warn", "trace"] as const)
   .argParser((v) => v.toLowerCase())
   .default("info")
-
-const SERVER_ENV_VAR_HELP = getEnvironmentVariableHelp({
-  LOCALSANDBOX_PORT: "Port to run the API server on",
-  LOCALSANDBOX_AMQP_PORT: "Port to run the AMQP broker on",
-  LOG_LEVEL: "Log level",
-})
 
 export const runCli = (_program: Command) => {
   const program = _program
@@ -108,7 +90,6 @@ export const runCli = (_program: Command) => {
     .addOption(LOG_LEVEL_OPTION)
     .addOption(PORT_OPTION)
     .addOption(AMQP_PORT_OPTION)
-    .addHelpText("after", SERVER_ENV_VAR_HELP)
     .action(async ({ port, amqpPort, logLevel }) => {
       const env = getServerEnv({
         LOCALSANDBOX_PORT: port,
@@ -124,7 +105,6 @@ export const runCli = (_program: Command) => {
     .addOption(LOG_LEVEL_OPTION)
     .addOption(PORT_OPTION)
     .addOption(AMQP_PORT_OPTION)
-    .addHelpText("after", SERVER_ENV_VAR_HELP)
     .action(async ({ port, amqpPort, logLevel }) => {
       const env = getServerEnv({
         LOCALSANDBOX_PORT: port,
@@ -139,11 +119,14 @@ export const runCli = (_program: Command) => {
         cwd: import.meta.dirname,
       })
       if (!package_json_file) {
-        throw new Error("Could not find root package.json")
+        logger.error("Could not find root package.json")
+        process.exitCode = 1
+        return
       }
 
       if (!(await checkConfig({ env, logger }))) {
-        process.exit(1)
+        process.exitCode = 1
+        return
       }
 
       const root_dir = path.dirname(package_json_file)
