@@ -12,6 +12,7 @@ import {
   DEFAULT_LOCALSANDBOX_AMQP_PORT,
   DEFAULT_LOCALSANDBOX_PORT,
   getServerEnv,
+  type ServerEnv,
 } from "lib/server/env.js"
 import { checkConfig } from "lib/server/check-config.js"
 import Configstore from "configstore"
@@ -59,6 +60,62 @@ const checkServerRunning = async (config: StoreConfig) => {
   return res
 }
 
+const getEnvironmentVariableHelp = (
+  vals: Partial<
+    Record<
+      keyof ServerEnv,
+      {
+        help: string
+        default?: string
+      }
+    >
+  >,
+) => {
+  const max_width = Math.max(...Object.keys(vals).map((key) => key.length))
+
+  return [
+    "",
+    "Environment Variables:",
+    ...Object.entries(vals).map(([key, val]) => {
+      const default_val = val.default ? ` (default: ${val.default})` : ""
+
+      return `  ${key.padEnd(max_width)}  ${val.help}${default_val}`
+    }),
+  ].join("\n")
+}
+
+const server_help = getEnvironmentVariableHelp({
+  LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES: {
+    help: "Disable creation of default resources",
+    default: "false",
+  },
+
+  LOCALSANDBOX_DEFAULT_LOCATION: {
+    help: "Location to use for default created resources",
+    default: "default",
+  },
+
+  LOCALSANDBOX_DEFAULT_NAMESPACE: {
+    help: "Default namespace to create on startup",
+    default: "default",
+  },
+
+  LOCALSANDBOX_DEFAULT_QUEUE: {
+    help: "Name of default queue to create on startup",
+    default: "default",
+  },
+
+  LOCALSANDBOX_DEFAULT_RESOURCE_GROUP: {
+    help: "Name of default resource group to create on startup",
+    default: "default",
+  },
+
+  LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID: {
+    help: "Default subscription id to use",
+    default: "default",
+  },
+})
+
 const PORT_OPTION = new Option(
   "-p --port <PORT>",
   "Port to run the API server on",
@@ -90,6 +147,7 @@ export const runCli = (_program: Command) => {
     .addOption(LOG_LEVEL_OPTION)
     .addOption(PORT_OPTION)
     .addOption(AMQP_PORT_OPTION)
+    .addHelpText("after", server_help)
     .action(async ({ port, amqpPort, logLevel }) => {
       const env = getServerEnv({
         LOCALSANDBOX_PORT: port,
@@ -105,6 +163,7 @@ export const runCli = (_program: Command) => {
     .addOption(LOG_LEVEL_OPTION)
     .addOption(PORT_OPTION)
     .addOption(AMQP_PORT_OPTION)
+    .addHelpText("after", server_help)
     .action(async ({ port, amqpPort, logLevel }) => {
       const env = getServerEnv({
         LOCALSANDBOX_PORT: port,
