@@ -3,7 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "description": "",
-  "main": "index.js",
+  "exports": {
+    "require": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
   "scripts": {
     "test": "vitest",
     "test:e2e": "cross-env TEST_AZURE_E2E=true vitest --testTimeout=20000 --dir=./test/parity",
@@ -17,8 +22,10 @@
     "dev:cli": "tsx ./scripts/cli.ts",
     "dev:cli:watch": "tsx --watch ./scripts/cli.ts",
     "dev": "npm run dev:cli:watch run",
-    "build": "npm run build:scripts",
-    "build:scripts": "tsup ./scripts/cli.ts ./scripts/start-server.ts --format esm -d ./dist/scripts"
+    "build": "npm run build:scripts && npm run build:esm && npm run build:cjs",
+    "build:esm": "tsup --config ./tsup.esm.config.ts && resolve-tspaths --out ./dist/esm && cp-cli ./package.esm.json ./dist/esm/package.json",
+    "build:cjs": "tsup --config ./tsup.cjs.config.ts && resolve-tspaths --out ./dist/cjs && cp-cli ./package.cjs.json ./dist/cjs/package.json && renamer --find .d.cts --replace .d.ts ./dist/cjs/**/*.d.cts",
+    "build:scripts": "tsup --config ./tsup.scripts.config.ts"
   },
   "keywords": [],
   "author": "",
@@ -63,6 +70,7 @@
     "@typespec/ts-http-runtime": "^1.0.0-alpha.20240611.3",
     "bundle-require": "^5.0.0",
     "change-case": "^5.4.4",
+    "cp-cli": "^2.0.0",
     "cross-env": "^7.0.3",
     "delay": "^6.0.0",
     "dotenv": "^16.4.5",
@@ -81,6 +89,8 @@
     "openapi3-ts": "^4.3.3",
     "p-memoize": "^7.1.1",
     "patch-package": "^8.0.0",
+    "renamer": "^5.0.2",
+    "resolve-tspaths": "^0.8.19",
     "tsup": "^8.2.4",
     "tsx": "^4.16.2",
     "type-fest": "^4.23.0",

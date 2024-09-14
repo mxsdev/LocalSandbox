@@ -13,7 +13,7 @@ import { SubscriptionClient } from "@azure/arm-subscriptions"
 import type { ServiceClientOptions } from "@azure/core-client"
 import { ResourceManagementClient } from "@azure/arm-resources"
 import type { Logger } from "pino"
-import { getTestLogger } from "./get-test-logger.js"
+import { getTestLogger } from "lib/logger/get-test-logger.js"
 import {
   ServiceBusClient,
   type ServiceBusClientOptions,
