@@ -3,15 +3,10 @@ import type {
   GetTokenOptions,
   TokenCredential,
 } from "@azure/core-auth"
-import {
-  createClientPipeline,
-  type ServiceClientOptions,
-} from "@azure/core-client"
-import { bearerTokenAuthenticationPolicyName } from "@typespec/ts-http-runtime"
+import type { ServiceClientOptions } from "@azure/core-client"
 import { DEFAULT_RESOURCE_NAME } from "lib/server/env.js"
 
 export class LocalSandbox implements TokenCredential {
-  readonly pipeline
   readonly serviceClientOptions: ServiceClientOptions
   readonly port: number
 
@@ -24,7 +19,7 @@ export class LocalSandbox implements TokenCredential {
   }
 
   get endpoint() {
-    return `http://localhost:${this.port}/azure`
+    return `https://localhost.localsandbox.sh:${this.port}/azure`
   }
 
   readonly subscriptionId: string
@@ -32,22 +27,10 @@ export class LocalSandbox implements TokenCredential {
   constructor(subscriptionId?: string | undefined, opts?: { port: number }) {
     this.subscriptionId = subscriptionId ?? DEFAULT_RESOURCE_NAME
 
-    this.pipeline = createClientPipeline({})
-
-    this.pipeline.addPolicy({
-      name: bearerTokenAuthenticationPolicyName,
-      sendRequest: async (request, next) => {
-        request.headers.set("Authorization", `Bearer ${this.subscriptionId}`)
-        return await next(request)
-      },
-    })
-
     this.port = opts?.port ?? 5545
 
     this.serviceClientOptions = {
-      pipeline: this.pipeline,
       endpoint: this.endpoint,
-      allowInsecureConnection: true,
     }
   }
 

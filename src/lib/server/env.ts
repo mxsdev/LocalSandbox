@@ -1,3 +1,4 @@
+import { Temporal } from "@js-temporal/polyfill"
 import { z } from "zod"
 
 export const DEFAULT_LOCALSANDBOX_PORT = 7329
@@ -17,11 +18,23 @@ const envSchema = z.object({
 
   LOCALSANDBOX_DEFAULT_LOCATION: z.string().optional().default("westus2"),
 
-  LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES: z.boolean().optional().default(false),
   LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID: resource_name,
+  LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES: z.boolean().optional().default(false),
   LOCALSANDBOX_DEFAULT_RESOURCE_GROUP: resource_name,
   LOCALSANDBOX_DEFAULT_NAMESPACE: resource_name,
   LOCALSANDBOX_DEFAULT_QUEUE: resource_name,
+
+  LOCALSANDBOX_HTTPS: z.boolean().optional().default(true),
+  LOCALSANDBOX_CERT_RETRIEVAL_URL: z
+    .string()
+    .url()
+    .optional()
+    .default("https://cert.localsandbox.sh"),
+  LOCALSANDBOX_CERT_CACHE_EXPIRATION: z
+    .string()
+    .duration()
+    .optional()
+    .default(Temporal.Duration.from({ days: 1 }).toString()),
 })
 
 export type ServerEnv = z.output<typeof envSchema>

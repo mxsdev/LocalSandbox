@@ -5,16 +5,18 @@ import "./susbcriptions.js"
 import "./service-bus/index.js"
 import type { AzureServiceBusBroker } from "../../broker/broker.js"
 import { getServerEnv } from "lib/server/env.js"
+import type { Logger } from "pino"
 
 interface AzureIntegrationConfig {
   broker: AzureServiceBusBroker
   store_bundle: ReturnType<(typeof azure_routes)["createStoreBundle"]>
+  logger?: Logger
 }
 
 export const createAzureIntegration: IntegrationFactory<
   AzureIntegrationConfig
 > = (args) => {
-  const { broker, store_bundle: store } = args
+  const { broker, store_bundle: store, logger } = args
 
   const env = getServerEnv()
   const build = azure_routes.build()
@@ -23,6 +25,9 @@ export const createAzureIntegration: IntegrationFactory<
     !env.LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES &&
     env.LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID
   ) {
+    logger?.debug(
+      `Creating default subscription "${env.LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID}"`,
+    )
     const subscription = store.store.subscription
       .insert()
       .values({
@@ -33,6 +38,10 @@ export const createAzureIntegration: IntegrationFactory<
 
     // create default resources
     if (env.LOCALSANDBOX_DEFAULT_RESOURCE_GROUP) {
+      logger?.debug(
+        `Creating default resource group "${env.LOCALSANDBOX_DEFAULT_RESOURCE_GROUP}"`,
+      )
+
       const resource_group = store.store.resource_group
         .insert()
         .values({
@@ -44,6 +53,10 @@ export const createAzureIntegration: IntegrationFactory<
         .executeTakeFirstOrThrow()
 
       if (env.LOCALSANDBOX_DEFAULT_NAMESPACE) {
+        logger?.debug(
+          `Creating default namespace "${env.LOCALSANDBOX_DEFAULT_NAMESPACE}"`,
+        )
+
         const namespace = store.store.sb_namespace
           .insert()
           .values({
@@ -55,6 +68,10 @@ export const createAzureIntegration: IntegrationFactory<
           .executeTakeFirstOrThrow()
 
         if (env.LOCALSANDBOX_DEFAULT_QUEUE) {
+          logger?.debug(
+            `Creating default queue "${env.LOCALSANDBOX_DEFAULT_QUEUE}"`,
+          )
+
           store.store.sb_queue
             .insert()
             .values({

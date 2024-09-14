@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import type { HTTPMethods } from "edgespec"
 
 export const extractRoute = <
@@ -13,8 +14,8 @@ export const extractRoute = <
 ) =>
   [
     key,
-    routes[key].find((val) => val.methods.includes(method)) as Extract<
-      R[K][number],
-      { methods: readonly M[] }
-    >,
+    {
+      ...routes[key].find((val) => val.methods.includes(method)),
+      auth: "bearer",
+    } as Extract<R[K][number], { methods: readonly M[] }> & { auth: "bearer" },
   ] as const

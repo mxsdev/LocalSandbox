@@ -7,10 +7,16 @@ import {
   isAddressInUseException,
   isErrnoException,
 } from "lib/util/is-errno-exception.js"
+import {
+  type ConfigStore,
+  getDefaultConfigStore,
+} from "lib/config/config-store.js"
+import { ConfigCertificateStore } from "lib/cert/certificate-store.js"
 
 export const startLocalSandboxServer = async ({
   env = getServerEnv(),
-}: { env?: ServerEnv } = {}) => {
+  config = getDefaultConfigStore(),
+}: { env?: ServerEnv; config?: ConfigStore } = {}) => {
   let on_complete: (() => void | Promise<void>)[] = []
 
   try {
@@ -43,10 +49,16 @@ export const startLocalSandboxServer = async ({
     logger.info("Starting API server...")
 
     const { amqp_server, bundle } = createApiBundle({
+      logger,
       amqp_logger: { logger: amqp_logger },
     })
 
-    const api_server = await serve(bundle, env.LOCALSANDBOX_PORT)
+    const api_server = await serve(
+      bundle,
+      env.LOCALSANDBOX_PORT,
+      new ConfigCertificateStore(config, env),
+    )
+
     on_complete.push(() => {
       logger.info("Closing api server...")
       api_server.close()
@@ -102,16 +114,13 @@ export const startLocalSandboxServer = async ({
 
     const logger = getLogger()
 
-    if (isErrnoException(e)) {
-      if (isAddressInUseException(e)) {
-        logger.error(
-          `Port ${e.port} is already in use. Please use a different port.`,
-        )
-      }
-      return
+    if (isErrnoException(e) && isAddressInUseException(e)) {
+      logger.error(
+        `Port ${e.port} is already in use. Please use a different port.`,
+      )
+    } else {
+      logger.error({ err: e }, "Error starting server")
     }
-
-    logger.error({ err: e }, "Error starting server")
   } finally {
     for (const fn of on_complete) {
       await fn()

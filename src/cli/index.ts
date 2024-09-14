@@ -15,35 +15,14 @@ import {
   type ServerEnv,
 } from "lib/server/env.js"
 import { checkConfig } from "lib/server/check-config.js"
-import Configstore from "configstore"
 import { z } from "zod"
 import detectPort from "detect-port"
+import {
+  getDefaultConfigStore,
+  type StoreConfig,
+} from "lib/config/config-store.js"
 
-const storeSchema = z
-  .object({
-    server: z
-      .object({
-        port: z.number(),
-        pid: z.number(),
-      })
-      .optional(),
-  })
-  .optional()
-  .default({})
-
-const store = new Configstore("localsandbox", {
-  config: storeSchema.parse(undefined),
-})
-
-const getConfig = () => {
-  return storeSchema.safeParse(store.get("config")).data ?? {}
-}
-
-const setConfig = (config: z.infer<typeof storeSchema>) => {
-  store.set("config", storeSchema.parse(config))
-}
-
-type StoreConfig = ReturnType<typeof getConfig>
+const configstore = getDefaultConfigStore()
 
 const checkServerRunning = async (config: StoreConfig) => {
   const res =
@@ -51,8 +30,7 @@ const checkServerRunning = async (config: StoreConfig) => {
     (await detectPort(config.server.port)) !== config.server.port
 
   if (!res) {
-    setConfig({
-      ...config,
+    configstore.update({
       server: undefined,
     })
   }
@@ -172,7 +150,6 @@ export const runCli = (_program: Command) => {
       })
 
       const logger = console
-      const config = getConfig()
 
       const package_json_file = await findUp("package.json", {
         cwd: import.meta.dirname,
@@ -219,8 +196,7 @@ export const runCli = (_program: Command) => {
         return
       }
 
-      setConfig({
-        ...config,
+      configstore.update({
         server: {
           port: env.LOCALSANDBOX_PORT,
           pid,
@@ -233,7 +209,7 @@ export const runCli = (_program: Command) => {
   const stop_cmd = createCommand("stop")
     .description("Stop server running in the background")
     .action(async () => {
-      const config = getConfig()
+      const config = configstore.get()
       const logger = console
 
       if (!(await checkServerRunning(config))) {
@@ -245,7 +221,7 @@ export const runCli = (_program: Command) => {
 
       try {
         process.kill(config.server!.pid)
-        setConfig({
+        configstore.update({
           ...config,
           server: undefined,
         })
@@ -259,7 +235,7 @@ export const runCli = (_program: Command) => {
   const status_command = createCommand("status")
     .description("Check the status of the running server")
     .action(async () => {
-      const config = getConfig()
+      const config = configstore.get()
       const logger = console
 
       if (config.server) {
@@ -275,11 +251,43 @@ export const runCli = (_program: Command) => {
       }
     })
 
+  // const azure_command = createCommand("azure")
+  //   .alias("az")
+  //   .alias("azl")
+  //   .description("Run azure cli command against the local server")
+  //   .helpCommand(false)
+  //   .helpOption(false)
+  //   .argument("<args...>")
+  //   .allowUnknownOption()
+  //   .action(async (args) => {
+  //     const config = configstore.get()
+
+  //     const { _: command_path } = minimist(args)
+
+  //     console.log({ command_path })
+
+  //     const port = config.server?.port ?? DEFAULT_LOCALSANDBOX_PORT
+  //     const url = `http://localhost:${port}`
+
+  //     if (command_path[0] === "servicebus") {
+  //       args.push("--endpoint", url)
+  //     }
+
+  //     const proc = child_process.spawn("az", args, {
+  //       stdio: "inherit",
+  //     })
+
+  //     proc.on("exit", (code) => {
+  //       process.exitCode = code ?? 0
+  //     })
+  //   })
+
   program
     .version(version)
     .addCommand(run_cmd)
     .addCommand(start_cmd)
     .addCommand(stop_cmd)
     .addCommand(status_command)
+    // .addCommand(azure_command)
     .parse()
 }

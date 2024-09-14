@@ -161,10 +161,11 @@ const queueLikeDefaults = {
 
 export const azure_routes = createIntegration({
   globalSpec: {
-    authMiddleware: {},
+    authMiddleware: {
+      bearer: bearerAuthMiddleware,
+    },
     afterAuthMiddleware: [
       envMiddleware,
-      bearerAuthMiddleware,
       AzureServiceBusBroker.middleware(),
       withExternallyPopulatedLogger,
     ],
@@ -353,3 +354,40 @@ export const azure_routes = createIntegration({
     },
   }),
 })
+
+azure_routes.implementRoute(
+  "/[tenantId]/v2.0/.well-known/openid-configuration",
+  {
+    methods: ["GET"],
+    auth: "none",
+    routeParams: z.object({
+      tenantId: z.string(),
+    }),
+  },
+  async (req) => {
+    const tenant = req.routeParams.tenantId
+
+    return Response.json({
+      issuer: `https://login.microsoftonline.com/${tenant}/v2.0`,
+      authorization_endpoint: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`,
+      token_endpoint: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
+      jwks_uri: `https://login.microsoftonline.com/${tenant}/discovery/v2.0/keys`,
+      response_modes_supported: ["query", "fragment", "form_post"],
+      response_types_supported: [
+        "code",
+        "id_token",
+        "code id_token",
+        "token id_token",
+        "token",
+      ],
+      scopes_supported: ["openid", "profile", "email", "offline_access"],
+      subject_types_supported: ["pairwise"],
+      id_token_signing_alg_values_supported: ["RS256"],
+      token_endpoint_auth_methods_supported: [
+        "client_secret_post",
+        "private_key_jwt",
+        "client_secret_basic",
+      ],
+    })
+  },
+)

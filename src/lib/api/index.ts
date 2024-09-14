@@ -19,11 +19,12 @@ const routeLoggingMiddleware: Middleware<{}, { logger: Logger }> = async (
   ctx,
   next,
 ) => {
+  // TODO: inject logger from context
   const { logger, cleanup } = getTestLogger("api")
 
   logger.debug(
     { url: req.url, method: req.method, body: await req.clone().text() },
-    "Got API Request",
+    "Incoming API Request",
   )
 
   ctx.logger = logger
@@ -46,9 +47,10 @@ const withRouteSpec = createWithEdgeSpec({
 export const createApiBundle = (
   settings: {
     amqp_logger?: { logger: Logger; cleanup?: () => Promise<void> }
+    logger?: Logger
   } = {},
 ) => {
-  let { amqp_logger } = settings
+  let { amqp_logger, logger } = settings
   amqp_logger ??= getTestLogger("amqp")
 
   const store_bundle = azure_routes.createStoreBundle()
@@ -63,6 +65,7 @@ export const createApiBundle = (
   )
 
   const azure_integration = createAzureIntegration({
+    logger,
     broker: azure_service_bus_broker,
     store_bundle,
   })
@@ -78,6 +81,14 @@ export const createApiBundle = (
         middleware: [withLogger(ctx.logger.child({}))],
       })
     }),
+    // "/[...params]": withRouteSpec({
+    //   methods: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
+    //   routeParams: z.object({
+    //     params: z.string().array(),
+    //   }),
+    // })(async () => {
+    //   return new Response("Not Found", { status: 404 })
+    // }),
   }
 
   const amqp_server: BrokerServer = azure_service_bus_broker

@@ -1,24 +1,11 @@
-import { getNodeHandler, startServer } from "edgespec/adapters/node.js"
-import https from "node:https"
-import { TEST_CERT, TEST_PK } from "../tls/index.js"
+import { startServer } from "edgespec/adapters/node.js"
 import type { EdgeSpecRouteBundle } from "edgespec"
+import type { CertificateStore } from "lib/cert/certificate-store.js"
 
-export const serve = async (bundle: EdgeSpecRouteBundle, port: number) => {
-  return await startServer(bundle, { port })
-}
-
-export const serveHTTPS = async (bundle: EdgeSpecRouteBundle, port: number) => {
-  const handler = getNodeHandler(bundle, {})
-
-  const server = https
-    .createServer(
-      {
-        key: TEST_PK,
-        cert: TEST_CERT,
-      },
-      handler,
-    )
-    .listen(port)
-
-  return server
+export const serve = async (
+  bundle: EdgeSpecRouteBundle,
+  port: number,
+  cert?: CertificateStore,
+) => {
+  return await startServer(bundle, { port, tls: await cert?.get() })
 }

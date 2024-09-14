@@ -73,7 +73,9 @@ const getAzureContext = (
   const subscriptionId = e2e_config?.AZURE_SUBSCRIPTION_ID ?? randomUUID()
 
   const sb_port = testServiceBusPort
-  const sb_local_endpoint = new URL(`http://localhost:${sb_port}`)
+  const sb_local_endpoint = new URL(
+    `https://localhost.localsandbox.sh:${sb_port}`,
+  )
 
   const local_sandbox = new LocalSandbox(subscriptionId, { port: testPort })
   const endpoint = local_sandbox.endpointUrl
@@ -151,7 +153,7 @@ const getAzureContext = (
 
   const sb_connection_string = e2e_config?.TEST_AZURE_E2E
     ? e2e_config.AZURE_SERVICE_BUS_CONNECTION_STRING
-    : `Endpoint=sb://localhost/${subscriptionId}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password;UseDevelopmentEmulator=true`
+    : `Endpoint=sb://localhost.localsandbox.sh/${subscriptionId}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password;UseDevelopmentEmulator=true`
 
   const sb_client = new ServiceBusClient(sb_connection_string, {
     ...(e2e_config?.TEST_AZURE_E2E
@@ -182,14 +184,14 @@ const getAzureContext = (
     ) => {
       const sb_client = e2e_config?.TEST_AZURE_E2E
         ? new ServiceBusClient(
-            `Endpoint=sb://localhost/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
+            `Endpoint=sb://localhost.localsandbox.sh/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
             {
               customEndpointAddress: sb_local_endpoint.toString(),
               ...opts,
             },
           )
         : new ServiceBusClient(
-            `Endpoint=sb://localhost/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
+            `Endpoint=sb://localhost.localsandbox.sh/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
             {
               customEndpointAddress: sb_local_endpoint.toString(),
               ...opts,
