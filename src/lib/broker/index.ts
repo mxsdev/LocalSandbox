@@ -1,8 +1,8 @@
 import type { ListenOptions } from "net"
-import { Container } from "rhea-promise"
+import { create_container } from "rhea"
 
 export async function serveAMQP(port: number) {
-  const container = new Container({})
+  const container = create_container({})
   const containerListenOptions: ListenOptions = {
     port,
   }
