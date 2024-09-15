@@ -16,6 +16,7 @@ import type { Logger } from "pino"
 import { getTestLogger } from "lib/logger/get-test-logger.js"
 import {
   ServiceBusClient,
+  type TokenCredential,
   type ServiceBusClientOptions,
   type ServiceBusReceiverOptions,
   type ServiceBusSessionReceiverOptions,
@@ -23,7 +24,6 @@ import {
 import { z } from "zod"
 import { DefaultAzureCredential } from "@azure/identity"
 import { Temporal } from "@js-temporal/polyfill"
-import { LocalSandbox } from "lib/sdk/local-sandbox.js"
 
 const getEnv = () => {
   const env_schema = z
@@ -77,16 +77,24 @@ const getAzureContext = (
     `https://localhost.localsandbox.sh:${sb_port}`,
   )
 
-  const local_sandbox = new LocalSandbox(subscriptionId, { port: testPort })
-  const endpoint = local_sandbox.endpointUrl
+  const endpoint = new URL(
+    `https://localhost.localsandbox.sh:${testPort}/azure`,
+  )
 
-  const credential =
+  const credential: TokenCredential =
     e2e_config?.TEST_AZURE_E2E === true
       ? new DefaultAzureCredential()
-      : local_sandbox.credential
+      : {
+          getToken: async () => {
+            return {
+              token: subscriptionId,
+              expiresOnTimestamp: Infinity,
+            }
+          },
+        }
 
   const service_client_options: ServiceClientOptions = {
-    ...(e2e_config?.TEST_AZURE_E2E ? {} : local_sandbox.serviceClientOptions),
+    ...(e2e_config?.TEST_AZURE_E2E ? {} : { endpoint: endpoint.toString() }),
     retryOptions: {
       maxRetries: 0,
     },

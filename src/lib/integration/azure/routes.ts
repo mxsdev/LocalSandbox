@@ -243,7 +243,7 @@ export const azure_routes = createIntegration({
         .extend({ id: z.any(), subscription_id: z.string() })
         .transform((v) => ({
           ...v,
-          id: `/subscriptions/${v.subscription_id}`,
+          id: `/subscriptions/${v.subscription_id}/resourceGroups/${v.name}`,
         })),
       hasOne: ["subscription"],
     },
