@@ -5,8 +5,8 @@ import type http from "node:http"
 import util from "node:util"
 import type { AzureServiceBusBroker } from "lib/broker/broker.js"
 import { createApiBundle } from "lib/api/index.js"
-import { DefaultConfigCertificateStore } from "lib/cert/certificate-store.js"
 import { getTestLogger } from "lib/logger/get-test-logger.js"
+import { getDefaultCertificateStore } from "lib/cert/certificate-store.js"
 
 let server: http.Server | undefined
 let broker: AzureServiceBusBroker | undefined
@@ -20,7 +20,7 @@ beforeAll(async () => {
   })
 
   testPort = await getPort()
-  server = await serve(bundle, testPort, new DefaultConfigCertificateStore())
+  server = await serve(bundle, testPort, await getDefaultCertificateStore())
 
   testServiceBusPort = await getPort()
   amqp_server.port = testServiceBusPort

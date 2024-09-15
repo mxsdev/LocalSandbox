@@ -4,6 +4,7 @@ import {
   type ConfigStore,
 } from "lib/config/config-store.js"
 import { getServerEnv, type ServerEnv } from "lib/server/env.js"
+import pMemoize from "p-memoize"
 import type { TlsOptions } from "tls"
 import { z } from "zod"
 
@@ -51,8 +52,9 @@ export class ConfigCertificateStore implements CertificateStore {
   }
 }
 
-export class DefaultConfigCertificateStore extends ConfigCertificateStore {
-  constructor() {
-    super(getDefaultConfigStore(), getServerEnv())
-  }
-}
+export const getDefaultCertificateStore = pMemoize(async () => {
+  return new ConfigCertificateStore(
+    await getDefaultConfigStore(),
+    getServerEnv(),
+  )
+})

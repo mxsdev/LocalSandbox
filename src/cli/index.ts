@@ -29,7 +29,7 @@ const checkServerRunning = async (config: StoreConfig) => {
     (await detectPort(config.server.port)) !== config.server.port
 
   if (!res) {
-    configstore.update({
+    ;(await configstore).update({
       server: undefined,
     })
   }
@@ -150,17 +150,14 @@ export const runCli = (_program: Command) => {
 
       const logger = console
 
-      const config = configstore.get()
+      const config = (await configstore).get()
       if (await checkServerRunning(config)) {
         logger.error(`Server is already running on port ${config.server!.port}`)
         process.exitCode = 1
         return
       }
 
-      const start_server_module_path = path.join(
-        import.meta.dirname,
-        "start-server.js",
-      )
+      const start_server_module_path = path.join(__dirname, "start-server.js")
 
       if (!start_server_module_path) {
         logger.error("Could not find start-server.js script")
@@ -197,7 +194,7 @@ export const runCli = (_program: Command) => {
         return
       }
 
-      configstore.update({
+      ;(await configstore).update({
         server: {
           port: env.LOCALSANDBOX_PORT,
           pid,
@@ -210,7 +207,7 @@ export const runCli = (_program: Command) => {
   const stop_cmd = createCommand("stop")
     .description("Stop server running in the background")
     .action(async () => {
-      const config = configstore.get()
+      const config = (await configstore).get()
       const logger = console
 
       if (!(await checkServerRunning(config))) {
@@ -222,7 +219,7 @@ export const runCli = (_program: Command) => {
 
       try {
         process.kill(config.server!.pid)
-        configstore.update({
+        ;(await configstore).update({
           ...config,
           server: undefined,
         })
@@ -236,7 +233,7 @@ export const runCli = (_program: Command) => {
   const status_command = createCommand("status")
     .description("Check the status of the running server")
     .action(async () => {
-      const config = configstore.get()
+      const config = (await configstore).get()
       const logger = console
 
       if (config.server) {

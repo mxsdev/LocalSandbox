@@ -1,12 +1,14 @@
 import { defineConfig } from "tsup"
+import { common_scripts_tsup_options } from "./tsup.scripts.common.config.js"
 
 export default defineConfig({
-  entry: ["./scripts/cli.ts", "./scripts/start-server.ts"],
-  outDir: "./dist/scripts",
+  ...common_scripts_tsup_options,
+
+  outDir: "./dist/scripts/esm",
+
   format: "esm",
-  platform: "node",
-  clean: true,
-  minify: true,
+  legacyOutput: true,
+
   banner: {
     js: "import { createRequire } from 'module';const require = createRequire(import.meta.url); const __filename = import.meta.filename; const __dirname = import.meta.dirname;",
   },

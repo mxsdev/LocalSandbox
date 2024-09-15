@@ -15,9 +15,10 @@ import { ConfigCertificateStore } from "lib/cert/certificate-store.js"
 
 export const startLocalSandboxServer = async ({
   env = getServerEnv(),
-  config = getDefaultConfigStore(),
+  config,
 }: { env?: ServerEnv; config?: ConfigStore } = {}) => {
   let on_complete: (() => void | Promise<void>)[] = []
+  config ??= await getDefaultConfigStore()
 
   try {
     const logger = getLogger({ level: env.LOG_LEVEL })
