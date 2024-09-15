@@ -1,9 +1,8 @@
-import {
+import rhea, {
   type Session,
   type Delivery,
   type Message,
   type Sender,
-  SenderEvents,
 } from "rhea"
 import { Temporal } from "@js-temporal/polyfill"
 import type { Logger } from "pino"
@@ -151,9 +150,11 @@ class DeliveryMap<T> {
 }
 
 class SequenceNumberFactory {
-  constructor(private readonly initial_sequence_number = new Long(1)) {}
+  private next_sequence_number
 
-  private next_sequence_number = this.initial_sequence_number
+  constructor(private readonly initial_sequence_number = new Long(1)) {
+    this.next_sequence_number = this.initial_sequence_number
+  }
 
   allocateNextSequenceNumber() {
     const sequence_number = this.next_sequence_number
@@ -186,7 +187,7 @@ interface MessageConsumer<M extends TaggedMessage> {
   sender: Sender
   session_id: string | undefined
   current_delivery: DeliveryMap<QueueConsumerDeliveryInfo<M>>
-  listeners: Partial<Record<SenderEvents, (...args: any[]) => void>>
+  listeners: Partial<Record<rhea.SenderEvents, (...args: any[]) => void>>
   schedule_for_deletion: boolean
 }
 
@@ -1021,15 +1022,15 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     )
 
     const listeners = {
-      [SenderEvents.senderOpen]: (e: any) => {
+      [rhea.SenderEvents.senderOpen]: (e: any) => {
         this.logger?.trace({ sender: e.sender.name }, "sender is open")
         // this.tryFlush()
       },
-      [SenderEvents.sendable]: (e: any) => {
+      [rhea.SenderEvents.sendable]: (e: any) => {
         this.logger?.debug("sender is sendable")
         this.tryFlush()
       },
-      [SenderEvents.senderDraining]: (e: {
+      [rhea.SenderEvents.senderDraining]: (e: {
         sender: Sender
         session: Session
       }) => {
@@ -1039,21 +1040,27 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         e.sender.set_drained(true)
         // e.session._write_flow(e.sender)
       },
-      [SenderEvents.senderClose]: (e: { sender: Sender }) => {
+      [rhea.SenderEvents.senderClose]: (e: { sender: Sender }) => {
         this.logger?.debug("sender is closed")
         this.removeConsumer(e.sender)
         // this.tryFlush()
       },
-      [SenderEvents.senderFlow]: (e: any) => {
+      [rhea.SenderEvents.senderFlow]: (e: any) => {
         this.logger?.debug("sender in flow")
         // this.tryFlush()
       },
-      [SenderEvents.accepted]: (e: { delivery: Delivery; sender: Sender }) => {
+      [rhea.SenderEvents.accepted]: (e: {
+        delivery: Delivery
+        sender: Sender
+      }) => {
         this.logger?.debug("sender accepted message")
 
         this.updateConsumerDisposition(e.sender, e.delivery, "completed")
       },
-      [SenderEvents.released]: (e: { delivery: Delivery; sender: Sender }) => {
+      [rhea.SenderEvents.released]: (e: {
+        delivery: Delivery
+        sender: Sender
+      }) => {
         this.logger?.debug(
           {
             undeliverable_here: e.delivery.remote_state?.["undeliverable_here"],
@@ -1065,12 +1072,18 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
         this.updateConsumerDisposition(e.sender, e.delivery, "abandoned")
       },
-      [SenderEvents.settled]: (e: { delivery: Delivery; sender: Sender }) => {
+      [rhea.SenderEvents.settled]: (e: {
+        delivery: Delivery
+        sender: Sender
+      }) => {
         this.logger?.debug("sender settled")
 
         // this.tryFlush()
       },
-      [SenderEvents.rejected]: (e: { delivery: Delivery; sender: Sender }) => {
+      [rhea.SenderEvents.rejected]: (e: {
+        delivery: Delivery
+        sender: Sender
+      }) => {
         this.logger?.debug(Object.keys(e), "sender rejected message")
 
         this.updateConsumerDisposition(e.sender, e.delivery, "rejected")
@@ -1188,12 +1201,15 @@ abstract class BrokerMessageSequenceWithSubqueues<M extends TaggedMessage> {
     public queue_id: string,
     protected logger: Logger | undefined,
     protected consumer_balancer: BrokerConsumerBalancer,
-  ) {}
+  ) {
+    this.queue = this.createMessageSequence()
+    this.queue_deadletter = this.createMessageSequence()
+  }
 
   protected sequence_number_factory = new SequenceNumberFactory()
 
-  private readonly queue = this.createMessageSequence()
-  private readonly queue_deadletter = this.createMessageSequence()
+  private readonly queue
+  private readonly queue_deadletter
 
   get(subqueue_type?: SubqueueType) {
     if (subqueue_type === "deadletter") {

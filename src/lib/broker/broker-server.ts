@@ -1,5 +1,5 @@
 import { promisify } from "node:util"
-import type { Server } from "http"
+import type { Server } from "net"
 import type { Logger } from "pino"
 import rhea, {
   type Connection,
@@ -49,7 +49,7 @@ export interface BrokerConnectionEvent {
 
 export abstract class BrokerServer {
   private readonly container: Container
-  private readonly server?: Server
+  private server?: Server
 
   protected opts: BrokerServerOpts & Required<Pick<BrokerServerOpts, "port">>
 
@@ -131,7 +131,7 @@ export abstract class BrokerServer {
   async open() {
     if (this.server) return
 
-    this.logger?.info("Launching AMQP server...")
+    this.logger?.info("Launching AMQP broker...")
 
     const server = this.container.listen({
       port: this.opts.port,
@@ -143,10 +143,11 @@ export abstract class BrokerServer {
           }
         : {}),
     })
+    this.server = server
 
     await new Promise<void>((resolve, reject) => {
       server.addListener("listening", () => {
-        this.logger?.info(`AMQP Listening on port ${this.opts.port}`)
+        this.logger?.info(`AMQP Broker listening on port ${this.opts.port}`)
         resolve()
       })
 
@@ -167,6 +168,8 @@ export abstract class BrokerServer {
       if (this.server) {
         await promisify(this.server.close.bind(this.server))()
       }
+
+      this.logger?.info("AMQP broker closed")
     } finally {
       this.server?.removeAllListeners()
       this.container.removeAllListeners()

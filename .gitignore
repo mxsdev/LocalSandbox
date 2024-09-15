@@ -3,3 +3,7 @@ node_modules
 .env
 .env.local
 .env.production
+
+dist
+
+**/.DS_Store

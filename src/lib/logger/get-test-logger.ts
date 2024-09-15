@@ -6,7 +6,7 @@ export const getTestLogger = (app?: string) => {
   const logger = getLogger({
     stream,
     level: "debug",
-    app: "api",
+    app,
   })
 
   stream.on("data", (chunk) => {

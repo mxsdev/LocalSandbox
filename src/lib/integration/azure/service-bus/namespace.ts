@@ -31,9 +31,8 @@ azure_routes.implementRoute(
       .insert()
       .values({
         ...parameters,
-        id: `${resource_group.id}/providers/Microsoft.ServiceBus/namespaces/${req.routeParams.namespaceName}`,
-        // TODO: support unique indexes
         location: resource_group.location,
+        // TODO: support unique indexes
         name: req.routeParams.namespaceName,
         resource_group_id: resource_group.id,
       })
@@ -41,5 +40,60 @@ azure_routes.implementRoute(
       .executeTakeFirstOrThrow()
 
     return ctx.json(namespace)
+  },
+)
+
+azure_routes.implementRoute(
+  ...extractRoute(
+    namespaceRoutes,
+    "/subscriptions/[subscriptionId]/resourceGroups/[resourceGroupName]/providers/Microsoft.ServiceBus/namespaces",
+    "GET",
+  ),
+  async (req, ctx) => {
+    const resource_group = ctx.store.resource_group
+      .select()
+      .where(
+        (rg) =>
+          ctx.subscription.subscriptionId === rg.subscription().subscriptionId,
+      )
+      .where(
+        (rg) =>
+          rg.subscription().subscriptionId === req.routeParams.subscriptionId,
+      )
+      .where((rg) => rg.name === req.routeParams.resourceGroupName)
+      .executeTakeFirstOrThrow(
+        () => new NotFoundError("Could not find resource group"),
+      )
+
+    return ctx.json({
+      value: resource_group.sb_namespaces(),
+      nextLink: "",
+    })
+  },
+)
+
+azure_routes.implementRoute(
+  ...extractRoute(
+    namespaceRoutes,
+    "/subscriptions/[subscriptionId]/providers/Microsoft.ServiceBus/namespaces",
+    "GET",
+  ),
+  async (req, ctx) => {
+    const resource_groups = ctx.store.resource_group
+      .select()
+      .where(
+        (rg) =>
+          ctx.subscription.subscriptionId === rg.subscription().subscriptionId,
+      )
+      .where(
+        (rg) =>
+          rg.subscription().subscriptionId === req.routeParams.subscriptionId,
+      )
+      .execute()
+
+    return ctx.json({
+      value: resource_groups.flatMap((rg) => rg.sb_namespaces()),
+      nextLink: "",
+    })
   },
 )

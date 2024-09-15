@@ -10,7 +10,7 @@ azure_routes.implementRoute(
     "PUT",
   ),
   async (req, ctx) => {
-    const parameters = req.jsonBody
+    const { type, id, ...parameters } = req.jsonBody
 
     const namespace = ctx.store.sb_namespace
       .select()
@@ -34,20 +34,9 @@ azure_routes.implementRoute(
       .insert()
       .values({
         ...parameters,
-        id: `${namespace.id}/queues/${req.routeParams.queueName}`,
         location: namespace.location,
         sb_namespace_id: namespace.id,
         name: req.routeParams.queueName,
-        type: "Microsoft.ServiceBus/namespaces/queues",
-        properties: {
-          ...parameters.properties,
-          // TODO: automate this
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          accessedAt:
-            // TODO: set this (based on location TZ) to 0001-01-01 00:00:00.000Z
-            new Date(-62135568422000).toISOString(),
-        },
       })
       .onAllConflictMerge()
       .executeTakeFirstOrThrow()

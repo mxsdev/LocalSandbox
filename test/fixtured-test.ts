@@ -11,12 +11,12 @@ import {
 } from "@azure/arm-servicebus"
 import { SubscriptionClient } from "@azure/arm-subscriptions"
 import type { ServiceClientOptions } from "@azure/core-client"
-import { LocalSandboxAzureCredential } from "lib/service-client/local-sandbox-azure-credential.js"
 import { ResourceManagementClient } from "@azure/arm-resources"
 import type { Logger } from "pino"
-import { getTestLogger } from "./get-test-logger.js"
+import { getTestLogger } from "lib/logger/get-test-logger.js"
 import {
   ServiceBusClient,
+  type TokenCredential,
   type ServiceBusClientOptions,
   type ServiceBusReceiverOptions,
   type ServiceBusSessionReceiverOptions,
@@ -66,30 +66,35 @@ const getAzureContext = (
 ) => {
   const e2e_config = env.azure
 
-  const port = testPort
+  if (!testPort) {
+    throw new Error("testPort is not set")
+  }
+
   const subscriptionId = e2e_config?.AZURE_SUBSCRIPTION_ID ?? randomUUID()
-  const endpoint = new URL(`http://localhost:${port}/azure`)
 
   const sb_port = testServiceBusPort
-  const sb_local_endpoint = new URL(`http://localhost:${sb_port}`)
-
-  const local_sandbox_credential = new LocalSandboxAzureCredential(
-    subscriptionId,
+  const sb_local_endpoint = new URL(
+    `https://localhost.localsandbox.sh:${sb_port}`,
   )
 
-  const credential =
+  const endpoint = new URL(
+    `https://localhost.localsandbox.sh:${testPort}/azure`,
+  )
+
+  const credential: TokenCredential =
     e2e_config?.TEST_AZURE_E2E === true
       ? new DefaultAzureCredential()
-      : local_sandbox_credential
+      : {
+          getToken: async () => {
+            return {
+              token: subscriptionId,
+              expiresOnTimestamp: Infinity,
+            }
+          },
+        }
 
   const service_client_options: ServiceClientOptions = {
-    ...(e2e_config?.TEST_AZURE_E2E
-      ? {}
-      : {
-          endpoint: endpoint.toString(),
-          allowInsecureConnection: true,
-          pipeline: local_sandbox_credential.pipeline,
-        }),
+    ...(e2e_config?.TEST_AZURE_E2E ? {} : { endpoint: endpoint.toString() }),
     retryOptions: {
       maxRetries: 0,
     },
@@ -156,7 +161,7 @@ const getAzureContext = (
 
   const sb_connection_string = e2e_config?.TEST_AZURE_E2E
     ? e2e_config.AZURE_SERVICE_BUS_CONNECTION_STRING
-    : `Endpoint=sb://localhost/${subscriptionId}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password;UseDevelopmentEmulator=true`
+    : `Endpoint=sb://localhost.localsandbox.sh/${subscriptionId}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password;UseDevelopmentEmulator=true`
 
   const sb_client = new ServiceBusClient(sb_connection_string, {
     ...(e2e_config?.TEST_AZURE_E2E
@@ -187,14 +192,14 @@ const getAzureContext = (
     ) => {
       const sb_client = e2e_config?.TEST_AZURE_E2E
         ? new ServiceBusClient(
-            `Endpoint=sb://localhost/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
+            `Endpoint=sb://localhost.localsandbox.sh/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
             {
               customEndpointAddress: sb_local_endpoint.toString(),
               ...opts,
             },
           )
         : new ServiceBusClient(
-            `Endpoint=sb://localhost/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
+            `Endpoint=sb://localhost.localsandbox.sh/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
             {
               customEndpointAddress: sb_local_endpoint.toString(),
               ...opts,

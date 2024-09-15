@@ -8,7 +8,6 @@
     "noPropertyAccessFromIndexSignature": true,
     "noUncheckedIndexedAccess": true,
 
-    "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
 
@@ -18,8 +17,11 @@
     "noEmit": true,
     "allowSyntheticDefaultImports": true,
 
-    "target": "ES2021",
+    "resolveJsonModule": true,
+
+    "target": "ES2022",
     "module": "Node16",
+
     "paths": {
       "edgespec": ["./src/lib/edgespec/index.ts"],
       "edgespec/*": ["./src/lib/edgespec/*"],
@@ -32,6 +34,7 @@
     "src/**/*.ts",
     "test/**/*.ts",
     "./vitest.config.ts",
+    "./tsup.*.ts",
     "./scripts/**/*.ts"
   ]
 }
