@@ -1,4 +1,3 @@
-import path from "node:path"
 import child_process from "node:child_process"
 import { version } from "../../package.json"
 import {
@@ -7,7 +6,6 @@ import {
   Option,
 } from "@commander-js/extra-typings"
 import { startLocalSandboxServer } from "lib/server/start-server.js"
-import { findUp } from "find-up"
 import {
   DEFAULT_LOCALSANDBOX_AMQP_PORT,
   DEFAULT_LOCALSANDBOX_PORT,
@@ -21,6 +19,7 @@ import {
   getDefaultConfigStore,
   type StoreConfig,
 } from "lib/config/config-store.js"
+import path from "node:path"
 
 const configstore = getDefaultConfigStore()
 
@@ -151,11 +150,20 @@ export const runCli = (_program: Command) => {
 
       const logger = console
 
-      const package_json_file = await findUp("package.json", {
-        cwd: import.meta.dirname,
-      })
-      if (!package_json_file) {
-        logger.error("Could not find root package.json")
+      const config = configstore.get()
+      if (await checkServerRunning(config)) {
+        logger.error(`Server is already running on port ${config.server!.port}`)
+        process.exitCode = 1
+        return
+      }
+
+      const start_server_module_path = path.join(
+        import.meta.dirname,
+        "start-server.js",
+      )
+
+      if (!start_server_module_path) {
+        logger.error("Could not find start-server.js script")
         process.exitCode = 1
         return
       }
@@ -164,13 +172,6 @@ export const runCli = (_program: Command) => {
         process.exitCode = 1
         return
       }
-
-      const root_dir = path.dirname(package_json_file)
-
-      const start_server_module_path = path.join(
-        root_dir,
-        "dist/scripts/start-server.js",
-      )
 
       const proc = child_process.fork(start_server_module_path, {
         detached: true,
@@ -251,43 +252,11 @@ export const runCli = (_program: Command) => {
       }
     })
 
-  // const azure_command = createCommand("azure")
-  //   .alias("az")
-  //   .alias("azl")
-  //   .description("Run azure cli command against the local server")
-  //   .helpCommand(false)
-  //   .helpOption(false)
-  //   .argument("<args...>")
-  //   .allowUnknownOption()
-  //   .action(async (args) => {
-  //     const config = configstore.get()
-
-  //     const { _: command_path } = minimist(args)
-
-  //     console.log({ command_path })
-
-  //     const port = config.server?.port ?? DEFAULT_LOCALSANDBOX_PORT
-  //     const url = `http://localhost:${port}`
-
-  //     if (command_path[0] === "servicebus") {
-  //       args.push("--endpoint", url)
-  //     }
-
-  //     const proc = child_process.spawn("az", args, {
-  //       stdio: "inherit",
-  //     })
-
-  //     proc.on("exit", (code) => {
-  //       process.exitCode = code ?? 0
-  //     })
-  //   })
-
   program
     .version(version)
     .addCommand(run_cmd)
     .addCommand(start_cmd)
     .addCommand(stop_cmd)
     .addCommand(status_command)
-    // .addCommand(azure_command)
     .parse()
 }

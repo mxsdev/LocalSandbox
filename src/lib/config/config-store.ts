@@ -29,14 +29,17 @@ export class ConfigStore {
   })
 
   get() {
-    return storeSchema.safeParse(this.store.get("config")).data ?? {}
+    const config = storeSchema.safeParse(this.store.get("config")).data
+    return config ?? {}
   }
 
   update(update: Partial<z.input<typeof storeSchema>>) {
-    this.store.set(
-      "config",
-      storeSchema.parse({ ...this.store.get("config").data, ...update }),
-    )
+    const new_config = storeSchema.parse({
+      ...this.store.get("config"),
+      ...update,
+    })
+
+    this.store.set("config", new_config)
   }
 }
 

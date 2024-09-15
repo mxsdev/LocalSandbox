@@ -19,12 +19,15 @@ const envSchema = z.object({
   LOCALSANDBOX_DEFAULT_LOCATION: z.string().optional().default("westus2"),
 
   LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID: resource_name,
-  LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES: z.boolean().optional().default(false),
+  LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES: z.coerce
+    .boolean()
+    .optional()
+    .default(false),
   LOCALSANDBOX_DEFAULT_RESOURCE_GROUP: resource_name,
   LOCALSANDBOX_DEFAULT_NAMESPACE: resource_name,
   LOCALSANDBOX_DEFAULT_QUEUE: resource_name,
 
-  LOCALSANDBOX_HTTPS: z.boolean().optional().default(true),
+  LOCALSANDBOX_HTTPS: z.coerce.boolean().optional().default(true),
   LOCALSANDBOX_CERT_RETRIEVAL_URL: z
     .string()
     .url()

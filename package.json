@@ -1,5 +1,5 @@
 {
-  "name": "cloud-sandbox",
+  "name": "local-sandbox",
   "version": "1.0.0",
   "type": "module",
   "description": "",
@@ -22,7 +22,7 @@
     "dev:cli": "tsx ./scripts/cli.ts",
     "dev:cli:watch": "tsx --watch ./scripts/cli.ts",
     "dev": "npm run dev:cli:watch run",
-    "build": "npm run build:scripts && npm run build:esm && npm run build:cjs",
+    "build": "npm run build:scripts",
     "build:esm": "tsup --config ./tsup.esm.config.ts && resolve-tspaths --out ./dist/esm && cp-cli ./package.esm.json ./dist/esm/package.json",
     "build:cjs": "tsup --config ./tsup.cjs.config.ts && resolve-tspaths --out ./dist/cjs && cp-cli ./package.cjs.json ./dist/cjs/package.json && renamer --find .d.cts --replace .d.ts ./dist/cjs/**/*.d.cts",
     "build:scripts": "tsup --config ./tsup.scripts.config.ts"
@@ -41,7 +41,6 @@
     "commander": "^12.1.0",
     "configstore": "^7.0.0",
     "detect-port": "^1.6.1",
-    "find-up": "^7.0.0",
     "kleur": "^4.1.5",
     "long": "^5.2.3",
     "minimist": "^1.2.8",
