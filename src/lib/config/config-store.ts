@@ -1,5 +1,4 @@
-import type ConfigstoreConstructor from "configstore"
-import pMemoize from "p-memoize"
+import Configstore from "lib/configstore/index.js"
 import { z } from "zod"
 
 const storeSchema = z
@@ -25,29 +24,27 @@ const storeSchema = z
 export type StoreConfig = z.output<typeof storeSchema>
 
 export class ConfigStore {
-  private readonly store
+  constructor(private readonly key: string) {}
 
-  constructor(Configstore: typeof ConfigstoreConstructor) {
-    this.store = new Configstore("localsandbox", {
-      config: storeSchema.parse(undefined),
-    })
-  }
+  private readonly store = new Configstore("localsandbox", {
+    config: storeSchema.parse(undefined),
+  })
 
   get() {
-    const config = storeSchema.safeParse(this.store.get("config")).data
+    const config = storeSchema.safeParse(this.store.get(this.key)).data
     return config ?? {}
   }
 
   update(update: Partial<z.input<typeof storeSchema>>) {
     const new_config = storeSchema.parse({
-      ...this.store.get("config"),
+      ...this.store.get(this.key),
       ...update,
     })
 
-    this.store.set("config", new_config)
+    this.store.set(this.key, new_config)
   }
 }
 
-export const getDefaultConfigStore = pMemoize(async () => {
-  return new ConfigStore((await import("configstore")).default)
-})
+const default_configstore = new ConfigStore("localsandbox")
+
+export const getDefaultConfigStore = () => default_configstore

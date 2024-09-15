@@ -21,6 +21,8 @@ import {
 } from "lib/config/config-store.js"
 import path from "node:path"
 
+global.__dirname ??= import.meta.dirname
+
 const configstore = getDefaultConfigStore()
 
 const checkServerRunning = async (config: StoreConfig) => {
@@ -29,7 +31,7 @@ const checkServerRunning = async (config: StoreConfig) => {
     (await detectPort(config.server.port)) !== config.server.port
 
   if (!res) {
-    ;(await configstore).update({
+    configstore.update({
       server: undefined,
     })
   }
@@ -150,7 +152,7 @@ export const runCli = (_program: Command) => {
 
       const logger = console
 
-      const config = (await configstore).get()
+      const config = configstore.get()
       if (await checkServerRunning(config)) {
         logger.error(`Server is already running on port ${config.server!.port}`)
         process.exitCode = 1
@@ -194,7 +196,7 @@ export const runCli = (_program: Command) => {
         return
       }
 
-      ;(await configstore).update({
+      configstore.update({
         server: {
           port: env.LOCALSANDBOX_PORT,
           pid,
@@ -207,7 +209,7 @@ export const runCli = (_program: Command) => {
   const stop_cmd = createCommand("stop")
     .description("Stop server running in the background")
     .action(async () => {
-      const config = (await configstore).get()
+      const config = configstore.get()
       const logger = console
 
       if (!(await checkServerRunning(config))) {
@@ -219,7 +221,7 @@ export const runCli = (_program: Command) => {
 
       try {
         process.kill(config.server!.pid)
-        ;(await configstore).update({
+        configstore.update({
           ...config,
           server: undefined,
         })
@@ -233,7 +235,7 @@ export const runCli = (_program: Command) => {
   const status_command = createCommand("status")
     .description("Check the status of the running server")
     .action(async () => {
-      const config = (await configstore).get()
+      const config = configstore.get()
       const logger = console
 
       if (config.server) {
