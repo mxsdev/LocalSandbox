@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "description": "",
+  "workspaces": [
+    "packages/*"
+  ],
   "exports": {
     "require": {
       "import": "./dist/esm/index.js",
@@ -13,7 +16,6 @@
     "test": "vitest",
     "test:e2e": "cross-env TEST_AZURE_E2E=true vitest --testTimeout=20000 --dir=./test/parity",
     "generate:azure": "tsx ./scripts/generate-azure-schema.ts",
-    "postinstall": "patch-package",
     "typecheck": "tsc --noEmit",
     "format": "eslint --ignore-path .gitignore --fix .",
     "preformat": "prettier --write --ignore-path .gitignore .",
@@ -26,7 +28,9 @@
     "build:esm": "tsup --config ./tsup.esm.config.ts && resolve-tspaths --out ./dist/esm && cp-cli ./package.esm.json ./dist/esm/package.json",
     "build:cjs": "tsup --config ./tsup.cjs.config.ts && resolve-tspaths --out ./dist/cjs && cp-cli ./package.cjs.json ./dist/cjs/package.json && renamer --find .d.cts --replace .d.ts ./dist/cjs/**/*.d.cts",
     "build:scripts:cjs": "tsup --config ./tsup.scripts.cjs.config.ts && cp-cli ./package.cli.json ./dist/scripts/cjs/package.json",
-    "bundle:cli": "pkg ./dist/scripts/cjs  -t node20-macos-arm64"
+    "build:cli": "npm run build:scripts:cjs && cross-env-shell pkg ./dist/scripts/cjs --out-path ./dist/binary -t $PKG_TARGET && npm run build:cli:azl",
+    "build:cli:azl": "npm run -w azure-local-cli build && mv ./packages/azure-local-cli/dist/azl ./dist/binary/azl",
+    "bundle:cli": "npm run build:cli && tsx ./scripts/bundle-cli.ts"
   },
   "keywords": [],
   "author": "",
@@ -85,11 +89,13 @@
     "js-string-escape": "^1.0.1",
     "json-schema-to-zod": "^2.4.1",
     "openapi3-ts": "^4.3.3",
+    "ora": "^8.1.0",
     "p-memoize": "^7.1.1",
     "patch-package": "^8.0.0",
     "prettier": "^3.3.3",
     "renamer": "^5.0.2",
     "resolve-tspaths": "^0.8.19",
+    "tar": "^7.4.3",
     "tsup": "^8.2.4",
     "tsx": "^4.16.2",
     "type-fest": "^4.23.0",

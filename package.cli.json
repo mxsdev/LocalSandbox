@@ -1,5 +1,5 @@
 {
-  "name": "local-sandbox-cli",
+  "name": "localsandbox",
   "bin": "./cli.js",
   "pkg": {
     "scripts": "*.js"
