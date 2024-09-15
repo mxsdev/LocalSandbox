@@ -1,3 +1,13 @@
+from collections import UserDict
+
+class AttrDict(UserDict):
+    def __getattr__(self, key):
+        return self.__getitem__(key)
+    def __setattr__(self, key, value):
+        if key == "data":
+            return super().__setattr__(key, value)
+        return self.__setitem__(key, value)
+
 import os
 
 port = int(os.environ.get("LOCALSANDBOX_PORT") or 7329)
@@ -25,7 +35,6 @@ def get_cli():
 
 
 from msal import PublicClientApplication
-from addict import Dict as AttrDict
 
 
 class LocalSandboxUserCredential(PublicClientApplication):

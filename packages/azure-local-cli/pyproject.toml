@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "azure-local-cli"
+version = "0.1.0"
+description = ""
+authors = ["Max Stoumen <max@mxs.dev>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+azure-cli = "^2.64.0"
+
+# [build-system]
+# requires = ["setuptools>=42", "wheel", "nuitka", "toml"]
+# build-backend = "nuitka.distutils.Build"
+
+[tool.poetry.group.dev.dependencies]
+nuitka = "^2.4.8"
