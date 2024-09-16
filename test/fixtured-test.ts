@@ -161,7 +161,7 @@ const getAzureContext = (
 
   const sb_connection_string = e2e_config?.TEST_AZURE_E2E
     ? e2e_config.AZURE_SERVICE_BUS_CONNECTION_STRING
-    : `Endpoint=sb://localhost.localsandbox.sh/${subscriptionId}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password;UseDevelopmentEmulator=true`
+    : `Endpoint=sb://${subscriptionId}.${rg_name}.${sb.namespace_name}.localhost.localsandbox.sh;SharedAccessKeyName=${"1234"};SharedAccessKey=password;UseDevelopmentEmulator=true`
 
   const sb_client = new ServiceBusClient(sb_connection_string, {
     ...(e2e_config?.TEST_AZURE_E2E
@@ -199,7 +199,7 @@ const getAzureContext = (
             },
           )
         : new ServiceBusClient(
-            `Endpoint=sb://localhost.localsandbox.sh/${subscription_id}/${rg_name}/${sb.namespace_name};SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
+            `Endpoint=sb://${subscription_id}.${rg_name}.${sb.namespace_name}.localhost.localsandbox.sh;SharedAccessKeyName=${"1234"};SharedAccessKey=password`,
             {
               customEndpointAddress: sb_local_endpoint.toString(),
               ...opts,

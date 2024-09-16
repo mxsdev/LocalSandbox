@@ -28,6 +28,7 @@ export const startLocalSandboxServer = async ({
     }
 
     process.on("uncaughtException", function (err) {
+      console.log(err)
       // Handle the error safely
       logger.error("Uncaught exception", {
         err,
@@ -93,7 +94,7 @@ export const startLocalSandboxServer = async ({
           logger.info("Graceful shutdown completed successfully.")
 
           setTimeout(() => {
-            logger.error("Graceful shutdown took too long. Exiting.")
+            logger.error("Graceful shutdown took too long. Exiting forcefully.")
             process.exit(1)
           }, 1000).unref()
 

@@ -2,7 +2,9 @@ import { test } from "vitest"
 import { parseBrokerURL } from "lib/broker/url.js"
 
 test("can parse queue or topic URL", ({ expect }) => {
-  const url = new URL("sb://localhost/subscription/rg/namespace/queue-or-topic")
+  const url = new URL(
+    "sb://subscription.rg.namespace.localhost.localsandbox.sh/queue-or-topic",
+  )
   expect(parseBrokerURL(url)).toMatchInlineSnapshot(`
     {
       "namespace_name": "namespace",
@@ -15,7 +17,7 @@ test("can parse queue or topic URL", ({ expect }) => {
 
 test("can parse subscription URL", ({ expect }) => {
   const url = new URL(
-    "sb://localhost/subscription/rg/namespace/queue-or-topic/Subscriptions/subscription",
+    "sb://subscription.rg.namespace.localhost.localsandbox.sh/queue-or-topic/Subscriptions/subscription",
   )
   expect(parseBrokerURL(url)).toMatchInlineSnapshot(`
     {
@@ -30,7 +32,7 @@ test("can parse subscription URL", ({ expect }) => {
 
 test("can parse queue w/ deadletter URL", ({ expect }) => {
   const url = new URL(
-    "sb://localhost/subscription/rg/namespace/queue-or-topic/$DeadLetterQueue",
+    "sb://subscription.rg.namespace.localhost.localsandbox.sh/queue-or-topic/$DeadLetterQueue",
   )
   expect(parseBrokerURL(url)).toMatchInlineSnapshot(`
     {
@@ -45,7 +47,7 @@ test("can parse queue w/ deadletter URL", ({ expect }) => {
 
 test("can parse queue w/ management url", ({ expect }) => {
   const url = new URL(
-    "sb://localhost/subscription/rg/namespace/queue-or-topic/$management",
+    "sb://subscription.rg.namespace.localhost.localsandbox.sh/queue-or-topic/$management",
   )
   expect(parseBrokerURL(url)).toMatchInlineSnapshot(`
     {
@@ -60,7 +62,7 @@ test("can parse queue w/ management url", ({ expect }) => {
 
 test("can parse subscription w/ management url", ({ expect }) => {
   const url = new URL(
-    "sb://localhost/subscription/rg/namespace/topic/Subscriptions/subscription/$management",
+    "sb://subscription.rg.namespace.localhost.localsandbox.sh/topic/Subscriptions/subscription/$management",
   )
   expect(parseBrokerURL(url)).toMatchInlineSnapshot(`
     {
@@ -76,7 +78,7 @@ test("can parse subscription w/ management url", ({ expect }) => {
 
 test("can parse subscription w/ DLQ", ({ expect }) => {
   const url = new URL(
-    "sb://localhost/subscription/rg/namespace/topic/Subscriptions/subscription/$DeadLetterQueue",
+    "sb://subscription.rg.namespace.localhost.localsandbox.sh/topic/Subscriptions/subscription/$DeadLetterQueue",
   )
   expect(parseBrokerURL(url)).toMatchInlineSnapshot(`
     {

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>csharp_test</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors> <!-- Disable for all warnings -->
+    <WarningsNotAsErrors>NU1903;NU1902</WarningsNotAsErrors> 
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.12.0" />
+    <PackageReference Include="Microsoft.Azure.Management.ServiceBus" Version="5.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.6.0" />
+    <PackageReference Include="xunit" Version="2.4.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.4.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.18.1" /> -->
+
+    <ProjectReference Include="../../../azure-sdk-for-net/sdk/servicebus/Azure.Messaging.ServiceBus/src/Azure.Messaging.ServiceBus.csproj" />
+    <ProjectReference Include="../../../azure-amqp/Microsoft.Azure.Amqp/Microsoft.Azure.Amqp.csproj" />
+  </ItemGroup>
+
+</Project>

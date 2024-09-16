@@ -90,7 +90,8 @@ export class AzureServiceBusBroker extends BrokerServer {
           correlation_id: message.message_id,
           body,
           application_properties: {
-            [Constants.statusCode]: 200,
+            [Constants.statusCode]: rhea.types.wrap_int(200),
+            [Constants.statusDescription]: "OK",
           },
         })
 
@@ -104,7 +105,7 @@ export class AzureServiceBusBroker extends BrokerServer {
           correlation_id: message.message_id,
           body: {},
           application_properties: {
-            [Constants.statusCode]: status,
+            [Constants.statusCode]: rhea.types.wrap_int(status),
             [Constants.errorCondition]: errorCondition,
             [Constants.statusDescription]: statusDescription,
           },
@@ -113,10 +114,7 @@ export class AzureServiceBusBroker extends BrokerServer {
       if (message.reply_to && operation === Constants.operationPutToken) {
         const consumer = this.cbs_senders[message.reply_to]
         if (!consumer) {
-          this.logger?.error(
-            { reply_to: message.reply_to },
-            "Could not reply to queue consumer",
-          )
+          this.logger?.error({ message }, "Could not reply to queue consumer")
           throw new Error("Could not reply to queue consumer")
         }
 
@@ -595,11 +593,21 @@ export class AzureServiceBusBroker extends BrokerServer {
   override async onReceiverOpen({
     receiver,
   }: BrokerReceiverEvent): Promise<void> {
-    this.logger?.debug({ receiver: receiver.name }, "receiver opened")
+    this.logger?.debug(
+      {
+        receiver: receiver.name,
+        source: receiver.source.address,
+        target: receiver.target.address,
+      },
+      "receiver opened",
+    )
+
+    receiver.set_target({ address: receiver.name })
 
     const queue = this.consumeHandshake(receiver.connection)
 
     if (queue) {
+      ;(receiver as any).local.attach.max_message_size = 1024 * 1024 * 1024
       this.link_queue.set(receiver, queue)
     }
   }
@@ -615,15 +623,19 @@ export class AzureServiceBusBroker extends BrokerServer {
       {
         sender: sender.name,
         properties: sender.properties,
+        source: sender.source.address,
+        target: sender.target.address,
       },
       "sender opened",
     )
+
+    sender.set_source({ address: sender.name })
 
     try {
       const queue = this.consumeHandshake(sender.connection)
 
       if (!queue) {
-        this.cbs_senders[sender.name] = sender
+        this.cbs_senders[sender.target.address ?? sender.name] = sender
       } else {
         if (!isQualifiedMessageSourceId(queue)) {
           this.logger?.error(

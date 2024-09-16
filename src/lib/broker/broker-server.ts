@@ -92,8 +92,9 @@ export abstract class BrokerServer {
       max_frame_size: 512,
     })
 
-    // this.container.on("connection_open", (e) => {})
-    // this.container.on("connection_close", (e) => {})
+    this.container.sasl_server_mechanisms.enable_anonymous()
+    this.container.sasl_server_mechanisms["MSSBCBS"] =
+      this.container.sasl_server_mechanisms["ANONYMOUS"]
 
     this.container.on("message", async (e) => {
       this.logger?.trace({ receiver: e.receiver.name }, "Received AMQP message")
@@ -119,11 +120,11 @@ export abstract class BrokerServer {
     })
 
     this.container.on("connection_open", async (e) => {
-      this.logger?.trace("AMQP Receiver Open")
+      this.logger?.trace("AMQP Connection Open")
       await this.onConnectionOpen(e)
     })
     this.container.on("connection_close", async (e) => {
-      this.logger?.trace("AMQP Receiver Closed")
+      this.logger?.trace("AMQP Connection Closed")
       await this.onConnectionClose(e)
     })
   }

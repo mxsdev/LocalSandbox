@@ -36,6 +36,7 @@ import {
 } from "./util.js"
 import { PriorityQueue } from "@datastructures-js/priority-queue"
 import { SessionCannotBeLockedError, SessionRequiredError } from "./errors.js"
+import { unreorderLockToken } from "lib/util/service-bus.js"
 
 interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
   delivery: Delivery
@@ -281,6 +282,14 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       lock_duration_ms: number
     }
   >()
+
+  private removeLockedMessage(message_id: string) {
+    const locked_message = this.locked_messages.get(message_id)
+    if (locked_message) {
+      clearTimeout(locked_message.timeout)
+      this.locked_messages.delete(message_id)
+    }
+  }
 
   private readonly message_scheduler = new MessageScheduler<
     ScheduledMessage<M>
@@ -599,7 +608,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
           this.finishDelivery(consumer_copy, delivery)
 
-          this.locked_messages.delete(message.message_id)
+          this.removeLockedMessage(message.message_id)
           // TODO: check docs to see where this should be redelivered (front, back?)
           this.scheduleMessagesInFront(message)
         }, lockDurationMs),
@@ -611,6 +620,12 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       // TODO: set drained based on whether there are more messages to send
 
       const delivery = consumer.sender.send(message)
+
+      if (Buffer.isBuffer(delivery.tag)) {
+        // @ts-expect-error client expects token to be re-ordered
+        delivery["tag"] = unreorderLockToken(delivery.tag)
+      }
+
       sender_credit[consumer.sender.name]!--
 
       message.delivery_count ??= 0
@@ -900,7 +915,17 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       return
     }
 
-    const delivery_info = consumer.current_delivery.get(delivery_tag)
+    this.logger?.debug(
+      { disposition, delivery_tag: delivery_tag.tag },
+      "Updating consumer disposition",
+    )
+
+    const delivery_info =
+      consumer.current_delivery.get(delivery_tag) ??
+      consumer.current_delivery.get({
+        ...delivery_tag,
+        tag: unreorderLockToken(Buffer.from(delivery_tag.tag)),
+      })
 
     if (!delivery_info) {
       this.logger?.error(
@@ -910,6 +935,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         },
         "Could not find delivery for disposition update",
       )
+
       return
     }
 
@@ -918,13 +944,18 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     switch (disposition) {
       case "completed":
         {
-          if (consumer.sender.rcv_settle_mode === 1) {
-            delivery.update(true)
-          }
-
-          this.locked_messages.delete(message.message_id)
+          this.removeLockedMessage(message.message_id)
 
           this.finishDelivery(consumer, delivery)
+
+          if (consumer.sender.rcv_settle_mode === 1) {
+            delivery.update(
+              true,
+
+              // TODO: include delivery tag??
+              rhea.types.wrap_described([], "amqp:accepted:list"),
+            )
+          }
 
           this.tryFlush()
         }
@@ -934,7 +965,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         {
           this.finishDelivery(consumer, delivery)
 
-          this.locked_messages.delete(message.message_id)
+          this.removeLockedMessage(message.message_id)
 
           if (consumer.sender.rcv_settle_mode === 1) {
             delivery.update(true)
@@ -995,7 +1026,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
 
           this.finishDelivery(consumer, delivery)
 
-          this.locked_messages.delete(message.message_id)
+          this.removeLockedMessage(message.message_id)
 
           this.tryDeadletterMessage(message)
           delivery.update(true)

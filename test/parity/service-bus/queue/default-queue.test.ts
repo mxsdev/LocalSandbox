@@ -3,7 +3,7 @@ import { fixturedTest } from "test/fixtured-test.js"
 
 fixturedTest("creates queue by default", async ({ azure, expect }) => {
   const sb_client = new ServiceBusClient(
-    `Endpoint=sb://localhost/default/default/default;SharedAccessKeyName=${"1234"};SharedAccessKey=password;UseDevelopmentEmulator=true`,
+    `Endpoint=sb://default.default.default.localhost;SharedAccessKeyName=${"1234"};SharedAccessKey=password;UseDevelopmentEmulator=true`,
     {
       customEndpointAddress: azure.sb_endpoint.toString(),
       ...azure.service_client_options,

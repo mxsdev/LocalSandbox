@@ -15,6 +15,7 @@ fixturedTest(
     const receiver = createReceiver(queue.name!)
 
     const [message] = await receiver.receiveMessages(1)
+    expect(message!.lockToken).toBeDefined()
     expect(message!.body).toBe("hello world!")
     expect(message!.sequenceNumber!.toNumber()).toBe(1)
 

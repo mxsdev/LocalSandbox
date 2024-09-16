@@ -23,7 +23,7 @@
     "prelint": "prettier --check --ignore-path .gitignore .",
     "dev:cli": "tsx ./scripts/cli.ts",
     "dev:cli:watch": "tsx --watch ./scripts/cli.ts",
-    "dev": "npm run dev:cli:watch run",
+    "dev": "cross-env LOG_LEVEL=debug npm run dev:cli:watch run",
     "build": "npm run build:scripts:cjs",
     "build:esm": "tsup --config ./tsup.esm.config.ts && resolve-tspaths --out ./dist/esm && shx cp ./package.esm.json ./dist/esm/package.json",
     "build:cjs": "tsup --config ./tsup.cjs.config.ts && resolve-tspaths --out ./dist/cjs && shx cp ./package.cjs.json ./dist/cjs/package.json && renamer --find .d.cts --replace .d.ts ./dist/cjs/**/*.d.cts",
