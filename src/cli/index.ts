@@ -220,7 +220,7 @@ export const runCli = (_program: Command) => {
       }
 
       try {
-        process.kill(config.server!.pid)
+        process.kill(config.server!.pid, "SIGINT")
         configstore.update({
           ...config,
           server: undefined,

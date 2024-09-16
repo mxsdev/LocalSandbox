@@ -20,9 +20,10 @@ const envSchema = z.object({
 
   LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID: resource_name,
   LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES: z.coerce
-    .boolean()
+    .string()
     .optional()
-    .default(false),
+    .default("false")
+    .transform((v) => v.toLowerCase() === "true" || v === "1"),
   LOCALSANDBOX_DEFAULT_RESOURCE_GROUP: resource_name,
   LOCALSANDBOX_DEFAULT_NAMESPACE: resource_name,
   LOCALSANDBOX_DEFAULT_QUEUE: resource_name,
