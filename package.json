@@ -15,6 +15,7 @@
   "scripts": {
     "test": "vitest",
     "test:e2e": "cross-env TEST_AZURE_E2E=true vitest --testTimeout=20000 --dir=./test/parity",
+    "test:csharp": "npm run -w @localsandbox/csharp-test test",
     "generate:azure": "tsx ./scripts/generate-azure-schema.ts",
     "typecheck": "tsc --noEmit",
     "format": "eslint --ignore-path .gitignore --fix .",

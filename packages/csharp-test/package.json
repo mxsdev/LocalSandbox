@@ -1,0 +1,6 @@
+{
+  "name": "@localsandbox/csharp-test",
+  "scripts": {
+    "test": "dotnet test"
+  }
+}
