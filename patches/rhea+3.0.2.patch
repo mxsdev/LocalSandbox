@@ -1,3 +1,14 @@
+diff --git a/node_modules/rhea/lib/container.js b/node_modules/rhea/lib/container.js
+index ac9a5ab..6f3a0b0 100644
+--- a/node_modules/rhea/lib/container.js
++++ b/node_modules/rhea/lib/container.js
+@@ -103,5 +103,6 @@ Container.prototype.ReceiverEvents = eventTypes.ReceiverEvents;
+ Container.prototype.SenderEvents = eventTypes.SenderEvents;
+ Container.prototype.SessionEvents = eventTypes.SessionEvents;
+ Container.prototype.ConnectionEvents = eventTypes.ConnectionEvents;
++Container.prototype.Typed = Container.prototype.types.Typed
+ 
+ module.exports = new Container();
 diff --git a/node_modules/rhea/lib/link.js b/node_modules/rhea/lib/link.js
 index 9d1ed84..c9b46aa 100644
 --- a/node_modules/rhea/lib/link.js
@@ -11,3 +22,20 @@ index 9d1ed84..c9b46aa 100644
          while (this.credit) {
              ++this.delivery_count;
              --this.credit;
+diff --git a/node_modules/rhea/lib/types.js b/node_modules/rhea/lib/types.js
+index d5a27b9..a1ed067 100644
+--- a/node_modules/rhea/lib/types.js
++++ b/node_modules/rhea/lib/types.js
+@@ -149,10 +149,11 @@ function hex(i) {
+     return Number(i).toString(16);
+ }
+ 
+-var types = {'by_code':{}};
++var types = {'by_code':{}, Typed};
+ Object.defineProperty(types, 'MAX_UINT', {value: 4294967295, writable: false, configurable: false});
+ Object.defineProperty(types, 'MAX_USHORT', {value: 65535, writable: false, configurable: false});
+ 
++
+ function define_type(name, typecode, annotations, empty_value) {
+     var t = new TypeDesc(name, typecode, annotations, empty_value);
+     t.create.typecode = t.typecode;//hack

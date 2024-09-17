@@ -9,6 +9,7 @@ export const serializedLong = z.union([
     .array()
     .transform((v) => Long.fromBytesBE(v)),
   z.instanceof(Buffer).transform((v) => Long.fromBytesBE(v as any)),
+  z.instanceof(rhea.Typed).transform((v) => Long.fromNumber(v.value)),
 ])
 
 export const unserializedLongToArrayLike = z.instanceof(Long).transform((v) => {
