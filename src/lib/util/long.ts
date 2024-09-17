@@ -1,3 +1,4 @@
+import rhea from "rhea"
 import Long from "long"
 import { z } from "zod"
 
@@ -14,7 +15,7 @@ export const unserializedLongToArrayLike = z.instanceof(Long).transform((v) => {
   if (v.getHighBits()) {
     return v.toBytesBE()
   } else {
-    return v.toNumber()
+    return rhea.types.wrap_long(v.toNumber())
   }
 })
 
@@ -24,7 +25,7 @@ export const unserializedLongToBufferLike = z
     if (v.getHighBits()) {
       return Buffer.from(v.toBytesBE())
     } else {
-      return v.toNumber()
+      return rhea.types.wrap_long(v.toNumber())
     }
   })
 

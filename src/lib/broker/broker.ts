@@ -91,7 +91,10 @@ export class AzureServiceBusBroker extends BrokerServer {
           body,
           application_properties: {
             [Constants.statusCode]: rhea.types.wrap_int(200),
+            statusCode: rhea.types.wrap_int(200),
+
             [Constants.statusDescription]: "OK",
+            statusDescription: "OK",
           },
         })
 
@@ -106,8 +109,14 @@ export class AzureServiceBusBroker extends BrokerServer {
           body: {},
           application_properties: {
             [Constants.statusCode]: rhea.types.wrap_int(status),
+            // TODO: figure out why this is not automatically fixed upstream...
+            statusCode: rhea.types.wrap_int(status),
+
             [Constants.errorCondition]: errorCondition,
+            errorCondition,
+
             [Constants.statusDescription]: statusDescription,
+            statusDescription,
           },
         })
 
@@ -199,6 +208,8 @@ export class AzureServiceBusBroker extends BrokerServer {
         )
 
         delivery.accept()
+        delivery.update(true)
+
         respondSuccess(consumer, "Accepted")
       } else {
         if (operation) {
@@ -428,12 +439,12 @@ export class AzureServiceBusBroker extends BrokerServer {
                     sessionId,
                   )
 
-                delivery.accept()
                 respondSuccess(consumer, {
                   messages: peekedMessages.map((m) => ({
                     message: encodeRheaMessage(m),
                   })),
                 })
+                // delivery.accept()
               }
               break
 
