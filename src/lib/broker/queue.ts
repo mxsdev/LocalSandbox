@@ -9,16 +9,14 @@ import type { Logger } from "pino"
 import { Constants } from "@azure/core-amqp"
 import Long from "long"
 import {
-  type BufferLikeEncodedLong,
+  type RheaEncodedLong,
   serializedLong,
-  unserializedLongToArrayLike,
-  unserializedLongToBufferLike,
+  unserializedLongToRheaParsable,
 } from "../util/long.js"
 import type { BrokerConsumerBalancer } from "./consumer-balancer.js"
 import { uuidToString } from "../util/uuid.js"
 import type { MessageCountDetails } from "@azure/arm-servicebus"
 import { BrokerConstants } from "./constants.js"
-import type { z } from "zod"
 import type {
   BrokerStore,
   DeliveryTag,
@@ -50,7 +48,7 @@ type MessageWithProperties<Base extends Message, MessageAnnotations> = Base & {
 type MessageWithSequenceNumber<Base extends Message> = MessageWithProperties<
   Base,
   {
-    [Constants.sequenceNumber]: BufferLikeEncodedLong
+    [Constants.sequenceNumber]: RheaEncodedLong
   }
 >
 
@@ -88,13 +86,18 @@ class MessageScheduler<M extends Message> {
   }
 
   cancelMessage(sequence_number: Long) {
-    const existing_timeout = this.scheduled_messages[sequence_number.toString()]
+    const sequence_number_id = sequence_number.toString()
+
+    const existing_timeout = this.scheduled_messages[sequence_number_id]
 
     if (!existing_timeout) {
       return false
     }
 
     clearTimeout(existing_timeout.timeout)
+
+    delete this.scheduled_messages[sequence_number_id]
+
     return true
   }
 
@@ -168,17 +171,15 @@ class SequenceNumberFactory {
 
     if (force_reallocation) {
       msg.message_annotations[Constants.sequenceNumber] =
-        unserializedLongToBufferLike.parse(this.allocateNextSequenceNumber())
+        unserializedLongToRheaParsable.parse(this.allocateNextSequenceNumber())
     } else {
       msg.message_annotations[Constants.sequenceNumber] ??=
-        unserializedLongToBufferLike.parse(this.allocateNextSequenceNumber())
+        unserializedLongToRheaParsable.parse(this.allocateNextSequenceNumber())
     }
 
     return msg as typeof msg & {
       message_annotations: {
-        [Constants.sequenceNumber]: z.output<
-          typeof unserializedLongToBufferLike
-        >
+        [Constants.sequenceNumber]: RheaEncodedLong
       }
     }
   }
@@ -1160,7 +1161,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     })
     ;(sender as any).local.attach.properties = {
       // TODO: support session locking
-      "com.microsoft:locked-until-utc": unserializedLongToArrayLike.parse(
+      "com.microsoft:locked-until-utc": unserializedLongToRheaParsable.parse(
         Long.fromNumber(Date.now() + 9999999999999)
           .mul(10000)
           .add(621355968000000000),

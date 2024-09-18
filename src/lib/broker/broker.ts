@@ -225,7 +225,10 @@ export class AzureServiceBusBroker extends BrokerServer {
                   messages: z.array(
                     z.object({
                       message: z.instanceof(Buffer),
-                      [Constants.messageIdMapKey]: z.string(),
+                      [Constants.messageIdMapKey]: z
+                        .string()
+                        .optional()
+                        .nullable(),
                     }),
                   ),
                 }),
@@ -386,9 +389,14 @@ export class AzureServiceBusBroker extends BrokerServer {
                     ),
                   )
 
-                delivery.accept()
                 respondSuccess(consumer, {
-                  [Constants.sequenceNumbers]: sequenceNumbers,
+                  [Constants.sequenceNumbers]: rhea.types.wrap_array(
+                    sequenceNumbers.map((v) => v.value),
+                    // 0x81,
+                    (rhea.types as unknown as { Long: { typecode: number } })
+                      .Long.typecode,
+                    undefined,
+                  ),
                 })
               }
               break

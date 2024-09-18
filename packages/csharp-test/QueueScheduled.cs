@@ -15,10 +15,7 @@ public class QueueScheduled : AzureTests
 
         var ScheduledEnqueuedTime = DateTimeOffset.UtcNow.Add(scheduleTimespan);
 
-        await sender.SendMessageAsync(new("1")
-        {
-            ScheduledEnqueueTime = ScheduledEnqueuedTime
-        });
+        await sender.ScheduleMessageAsync(new("1"), ScheduledEnqueuedTime);
 
         var receiver = CreateReceiver(queueName);
 

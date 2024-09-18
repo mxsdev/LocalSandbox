@@ -9,7 +9,7 @@ import type { Logger } from "pino"
 import type { ParsedTypedRheaMessageWithId } from "../amqp/parse-message.js"
 import type Long from "long"
 import { Constants } from "@azure/core-amqp"
-import type { BufferLikeEncodedLong } from "../util/long.js"
+import type { RheaEncodedLong } from "../util/long.js"
 import type {
   _QualifiedQueueId,
   BrokerStore,
@@ -131,7 +131,7 @@ export class BrokerConsumerBalancer {
   sendMessagesToQueue(
     queueId: QualifiedMessageDestinationId,
     ...message: ParsedTypedRheaMessageWithId[]
-  ): BufferLikeEncodedLong[] {
+  ): RheaEncodedLong[] {
     // TODO: handle when queue is deleted more gracefully
     const queue = this.getMessageDestinationFromStoreOrThrow(queueId)
 

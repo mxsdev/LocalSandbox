@@ -9,27 +9,35 @@ export const serializedLong = z.union([
     .array()
     .transform((v) => Long.fromBytesBE(v)),
   z.instanceof(Buffer).transform((v) => Long.fromBytesBE(v as any)),
-  z.instanceof(rhea.Typed).transform((v) => Long.fromNumber(v.value)),
+  z
+    .instanceof(rhea.Typed)
+    .transform((v) =>
+      Buffer.isBuffer(v.value)
+        ? Long.fromBytesBE(v.value as any)
+        : Long.fromNumber(v.value),
+    ),
 ])
 
-export const unserializedLongToArrayLike = z.instanceof(Long).transform((v) => {
-  if (v.getHighBits()) {
-    return v.toBytesBE()
-  } else {
-    return rhea.types.wrap_long(v.toNumber())
-  }
-})
+// const unserializedLongToArrayLike = z.instanceof(Long).transform((v) => {
+//   if (v.getHighBits()) {
+//     return v.toBytesBE()
+//   } else {
+//     // rhea.types.wrap_long
+//     return v.toNumber()
+//   }
+// })
 
-export const unserializedLongToBufferLike = z
+// const unserializedLongToBufferLike = z.instanceof(Long).transform((v) => {
+//   if (v.getHighBits()) {
+//     return Buffer.from(v.toBytesBE())
+//   } else {
+//     // rhea.types.wrap_long
+//     return v.toNumber()
+//   }
+// })
+
+export const unserializedLongToRheaParsable = z
   .instanceof(Long)
-  .transform((v) => {
-    if (v.getHighBits()) {
-      return Buffer.from(v.toBytesBE())
-    } else {
-      return rhea.types.wrap_long(v.toNumber())
-    }
-  })
+  .transform((v) => rhea.types.wrap_long(Buffer.from(v.toBytesBE())))
 
-export type BufferLikeEncodedLong = z.output<
-  typeof unserializedLongToBufferLike
->
+export type RheaEncodedLong = z.output<typeof unserializedLongToRheaParsable>

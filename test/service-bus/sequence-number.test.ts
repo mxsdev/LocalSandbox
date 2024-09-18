@@ -2,7 +2,7 @@ import { Constants } from "@azure/core-amqp"
 import Long from "long"
 import { fixturedTest } from "test/fixtured-test.js"
 import { BrokerConstants } from "lib/broker/constants.js"
-import { unserializedLongToArrayLike } from "lib/util/long.js"
+import { unserializedLongToRheaParsable } from "lib/util/long.js"
 
 fixturedTest(
   "sends message with sequence number",
@@ -38,7 +38,7 @@ fixturedTest(
         operation: BrokerConstants.debug.operations.setSequenceNumber,
       },
       body: {
-        [Constants.sequenceNumber]: unserializedLongToArrayLike.parse(
+        [Constants.sequenceNumber]: unserializedLongToRheaParsable.parse(
           new Long(0, 1),
         ),
       },
