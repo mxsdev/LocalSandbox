@@ -35,6 +35,7 @@ import {
 import { PriorityQueue } from "@datastructures-js/priority-queue"
 import { SessionCannotBeLockedError, SessionRequiredError } from "./errors.js"
 import { unreorderLockToken } from "lib/util/service-bus.js"
+import { cloneRheaMessageLike } from "lib/amqp/parse-message.js"
 
 interface QueueConsumerDeliveryInfo<M extends TaggedMessage> {
   delivery: Delivery
@@ -1473,7 +1474,7 @@ export class BrokerTopic<M extends TaggedMessage> {
     )
 
     return this.subscriptions.flatMap((sub) =>
-      sub.get(undefined).scheduleMessages(structuredClone(message)),
+      sub.get(undefined).scheduleMessages(cloneRheaMessageLike(message)),
     )
   }
 

@@ -1,3 +1,4 @@
+import cloneDeepWith from "lodash.clonedeepwith"
 import rhea from "rhea"
 import type { JsonValue } from "type-fest"
 
@@ -129,3 +130,6 @@ export const parseRheaMessageBody = (
 
 export const encodeRheaMessage = (message: ParsedTypedRheaMessage) =>
   rhea.message.encode(message)
+
+export const cloneRheaMessageLike = <T>(message: T): T =>
+  cloneDeepWith(message, (val) => (val instanceof rhea.Typed ? val : undefined))
