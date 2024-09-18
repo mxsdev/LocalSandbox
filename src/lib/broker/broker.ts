@@ -538,7 +538,16 @@ export class AzureServiceBusBroker extends BrokerServer {
 
                 respondSuccess(consumer, {
                   // TODO: populate this...
-                  expirations,
+                  expirations: rhea.types.wrap_array(
+                    expirations,
+                    // 0x83,
+                    (
+                      rhea.types as unknown as {
+                        Timestamp: { typecode: number }
+                      }
+                    ).Timestamp.typecode,
+                    undefined,
+                  ),
                 })
               }
               break
