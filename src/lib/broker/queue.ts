@@ -1007,7 +1007,8 @@ export abstract class MessageSequence<M extends TaggedMessage> {
               true,
 
               // TODO: include delivery tag??
-              // rhea.types.wrap_described([], "amqp:released:list"),
+              // TODO: what delivery outcome is expected here...?
+              rhea.types.wrap_described([], "amqp:accepted:list"),
             )
           } else {
             const maxDeliveryCount = this.queue.properties.maxDeliveryCount
