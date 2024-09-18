@@ -183,7 +183,6 @@ export class AzureServiceBusBroker extends BrokerServer {
           queue_or_topic_or_subscription.properties
             .forwardDeadLetteredMessagesTo != null
         ) {
-          delivery.reject()
           respondFailure(
             consumer,
             400,
