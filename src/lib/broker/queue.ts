@@ -730,31 +730,39 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       ] as Date | undefined
 
       if (message.absolute_expiry_time) {
-        this.message_expiration_timeouts[message.message_id] = setTimeout(
-          () => {
-            delete this.message_expiration_timeouts[message.message_id]
+        const message_expires_in =
+          new Date(message.absolute_expiry_time).getTime() - Date.now()
 
-            if (this.queue.properties.deadLetteringOnMessageExpiration) {
-              // TODO: populate error & reason
-              this.tryDeadletterMessage({
-                ...message,
-                ttl: undefined,
-                absolute_expiry_time: undefined,
-                application_properties: {
-                  ...message.application_properties,
-                  [BrokerConstants.deadLetterReason]:
-                    BrokerConstants.errors.messageExpired.reason,
-                  [BrokerConstants.deadLetterDescription]:
-                    BrokerConstants.errors.messageExpired.description,
-                },
-              })
-            }
-          },
-          Math.max(
-            0,
-            new Date(message.absolute_expiry_time).getTime() - Date.now(),
-          ),
-        )
+        // This is needed since NodeJS timeouts will "overflow" if given a # of
+        // ms that cannot fit within an int32
+        // TODO: support larger values by chaining timeouts??
+        if (message_expires_in <= 2_147_483_647) {
+          this.message_expiration_timeouts[message.message_id] = setTimeout(
+            () => {
+              delete this.message_expiration_timeouts[message.message_id]
+
+              if (this.queue.properties.deadLetteringOnMessageExpiration) {
+                // TODO: populate error & reason
+                this.tryDeadletterMessage({
+                  ...message,
+                  ttl: undefined,
+                  absolute_expiry_time: undefined,
+                  application_properties: {
+                    ...message.application_properties,
+                    [BrokerConstants.deadLetterReason]:
+                      BrokerConstants.errors.messageExpired.reason,
+                    [BrokerConstants.deadLetterDescription]:
+                      BrokerConstants.errors.messageExpired.description,
+                  },
+                })
+              }
+            },
+            Math.max(
+              0,
+              new Date(message.absolute_expiry_time).getTime() - Date.now(),
+            ),
+          )
+        }
       }
 
       if (this.queue_type === "sb_queue") {
@@ -1054,7 +1062,12 @@ export abstract class MessageSequence<M extends TaggedMessage> {
           this.removeLockedMessage(message.message_id)
 
           this.tryDeadletterMessage(message)
-          delivery.update(true)
+
+          delivery.update(
+            true,
+            // TODO: include delivery tag??
+            rhea.types.wrap_described([], "amqp:rejected:list"),
+          )
         }
         break
     }
