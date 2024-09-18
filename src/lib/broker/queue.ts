@@ -673,6 +673,11 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     ).total("milliseconds")
 
     for (const message of messages) {
+      this.logger?.debug(
+        { message_annotations: message.message_annotations },
+        "Scheduling message for immedate or eventual delivery",
+      )
+
       if (requiresDuplicateDetection) {
         if (
           [
@@ -764,6 +769,11 @@ export abstract class MessageSequence<M extends TaggedMessage> {
           scheduled_enqueued_time &&
           scheduled_enqueued_time.getTime() > Date.now()
         ) {
+          this.logger?.debug(
+            { scheduled_enqueued_time },
+            "Scheduling essage in the future",
+          )
+
           this.message_scheduler.scheduleMessage(
             message,
             scheduled_enqueued_time,
@@ -982,23 +992,36 @@ export abstract class MessageSequence<M extends TaggedMessage> {
                 .toString(),
               message,
             )
-            return
-          }
 
-          const maxDeliveryCount = this.queue.properties.maxDeliveryCount
+            delivery.update(
+              true,
 
-          if ((message.delivery_count ?? 1) >= maxDeliveryCount) {
-            // TODO: add dead letter reason for max redeliveries
-            message.application_properties ??= {}
-            message.application_properties[BrokerConstants.deadLetterReason] =
-              BrokerConstants.errors.maxDeliveryCountExceeded.reason
-            message.application_properties[
-              BrokerConstants.deadLetterDescription
-            ] = BrokerConstants.errors.maxDeliveryCountExceeded.description
-
-            this.tryDeadletterMessage(message)
+              // TODO: include delivery tag??
+              // rhea.types.wrap_described([], "amqp:released:list"),
+            )
           } else {
-            this.scheduleMessagesInFront(message)
+            const maxDeliveryCount = this.queue.properties.maxDeliveryCount
+
+            if ((message.delivery_count ?? 1) >= maxDeliveryCount) {
+              // TODO: add dead letter reason for max redeliveries
+              message.application_properties ??= {}
+              message.application_properties[BrokerConstants.deadLetterReason] =
+                BrokerConstants.errors.maxDeliveryCountExceeded.reason
+              message.application_properties[
+                BrokerConstants.deadLetterDescription
+              ] = BrokerConstants.errors.maxDeliveryCountExceeded.description
+
+              this.tryDeadletterMessage(message)
+            } else {
+              this.scheduleMessagesInFront(message)
+            }
+
+            delivery.update(
+              true,
+
+              // TODO: include delivery tag??
+              rhea.types.wrap_described([], "amqp:released:list"),
+            )
           }
         }
         break

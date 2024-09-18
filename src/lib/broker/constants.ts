@@ -1,3 +1,5 @@
+import rhea from "rhea"
+
 export const BrokerConstants = {
   debug: {
     operations: {
@@ -5,9 +7,9 @@ export const BrokerConstants = {
     },
   },
   messageState: {
-    active: 0,
-    deferred: 1,
-    scheduled: 2,
+    active: rhea.types.wrap_int(0),
+    deferred: rhea.types.wrap_int(1),
+    scheduled: rhea.types.wrap_int(2),
   },
   deadLetterReason: "DeadLetterReason",
   deadLetterDescription: "DeadLetterErrorDescription",

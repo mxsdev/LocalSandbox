@@ -9,7 +9,7 @@ using Microsoft.Rest;
 
 public class AzureTests : IAsyncDisposable
 {
-    private readonly bool e2eMode = Environment.GetEnvironmentVariable("AZURE_E2E") == "true";
+    protected readonly bool e2eMode = Environment.GetEnvironmentVariable("AZURE_E2E") == "true";
 
     private readonly string subscriptionId;
 
