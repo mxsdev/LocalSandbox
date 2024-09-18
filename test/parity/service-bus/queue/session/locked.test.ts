@@ -23,8 +23,6 @@ fixturedTest(
       "The requested session 'session' cannot be accepted. It may be locked by another receiver.",
     )
 
-    await receiver.completeMessage(message!)
-
     await expect(acceptSession(queue.name!, sessionId)).rejects.toThrowError(
       "The requested session 'session' cannot be accepted. It may be locked by another receiver.",
     )

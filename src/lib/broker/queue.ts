@@ -1112,7 +1112,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       },
       [rhea.SenderEvents.senderClose]: (e: { sender: Sender }) => {
         this.logger?.debug("sender is closed")
-        this.removeConsumer(e.sender)
+        this.removeConsumer(e.sender, true)
         // this.tryFlush()
       },
       [rhea.SenderEvents.senderFlow]: (e: any) => {
@@ -1160,6 +1160,27 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       },
     }
 
+    ;(sender as any).local.attach.properties = {
+      // TODO: support session locking
+      "com.microsoft:locked-until-utc": unserializedLongToRheaParsable.parse(
+        Long.fromNumber(Date.now() + 9999999999999)
+          .mul(10000)
+          .add(621355968000000000),
+      ),
+    }
+
+    sender.set_source({
+      ...sender.source,
+      address: sender.name,
+      durable: 0,
+      expiry_policy: "session-end",
+      timeout: 0,
+      dynamic: false,
+      filter: {
+        [Constants.sessionFilterName]: undefined,
+      },
+    })
+
     this.consumers.add({
       sender,
       listeners,
@@ -1174,14 +1195,6 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         [Constants.sessionFilterName]: sessionId,
       },
     })
-    ;(sender as any).local.attach.properties = {
-      // TODO: support session locking
-      "com.microsoft:locked-until-utc": unserializedLongToRheaParsable.parse(
-        Long.fromNumber(Date.now() + 9999999999999)
-          .mul(10000)
-          .add(621355968000000000),
-      ),
-    }
 
     Object.entries(listeners).forEach((args) => sender.addListener(...args))
 
@@ -1190,7 +1203,7 @@ export abstract class MessageSequence<M extends TaggedMessage> {
     this.propagateAccess()
   }
 
-  removeConsumer(sender: Sender) {
+  removeConsumer(sender: Sender, force = false) {
     this.logger?.debug({ sender: sender.name }, "Removing sender")
 
     const consumer = this.consumers.get(sender)
@@ -1204,7 +1217,9 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       (args) => args[1] && consumer.sender.removeListener(...args),
     )
 
-    if (consumer.current_delivery.length === 0) {
+    // TODO: should we immediately force unlock all locked messages if force is true?
+
+    if (consumer.current_delivery.length === 0 || force) {
       this.logger?.debug(
         { sender: consumer.sender.name },
         "Removing consumer from queue",

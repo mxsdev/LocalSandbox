@@ -90,6 +90,13 @@ public class AzureTests : IAsyncDisposable
         return receiver;
     }
 
+    protected async Task<ServiceBusReceiver> AcceptSession(string queueName, string sessionId)
+    {
+        var receiver = await sbClient.AcceptSessionAsync(queueName, sessionId);
+        disposables.Add(receiver);
+        return receiver;
+    }
+
     protected ServiceBusReceiver CreateReceiver(string topicName, string subscriptionName)
     {
         return sbClient.CreateReceiver(topicName, subscriptionName, new());
