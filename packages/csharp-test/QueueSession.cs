@@ -65,4 +65,23 @@ public class QueueSession : AzureTests
             Assert.Equal("2", msg2.Body.ToString());
         }
     }
+
+    [Fact]
+    public async void RequiresSessionEnabled()
+    {
+        var queueName = await CreateQueue(requiresSession: true);
+
+        var sender = CreateSender(queueName);
+
+
+        try
+        {
+            await sender.SendMessageAsync(new("hello world!"));
+            Assert.Fail("Expected exception to be thrown");
+        }
+        catch (InvalidOperationException e)
+        {
+            Assert.Matches("The SessionId was not set on a message, and it cannot be sent to the entity. Entities that have session support enabled can only receive messages that have the SessionId set to a valid value.", e.Message);
+        }
+    }
 }
