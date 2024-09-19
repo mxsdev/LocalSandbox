@@ -1,7 +1,6 @@
 {
   "name": "azure-local-cli",
   "scripts": {
-    "install": "poetry install --no-root",
     "build": "npm run install && mkdir -p dist && poetry run python -m nuitka ./azure_local_cli --output-filename=./dist/azl --remove-output --assume-yes-for-downloads",
     "build:poetry": "poetry build",
     "generate:requirements": "poetry export -f requirements.txt --without-hashes --output requirements.txt"
