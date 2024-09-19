@@ -9,34 +9,29 @@ global.__dirname ??= import.meta.dirname
 export const runAzureLocalCli = async (...args: string[]) => {
   const az_path = await which("az", { nothrow: true })
 
-  if (!az_path) {
+  if (!az_path || !(await lookpath(az_path))) {
     console.error("Could not find az cli in PATH")
     process.exitCode = 1
     process.exit()
   }
 
-  const az_abs_path = await fs.realpath(az_path)
+  // const az_abs_path = await fs.realpath(az_path)
 
-  const python_path_candidates = [
-    path.join(path.dirname(az_abs_path), "../libexec/bin/python"),
-    "python",
-    "python3",
-    "/usr/bin/python",
-    "/usr/bin/python3",
-    "/usr/local/bin/python3",
-  ]
+  const stdout = await new Promise<string>((resolve, reject) => {
+    child_process.exec(`${az_path} --version`, {}, (err, stdout, stderr) => {
+      if (err) {
+        reject(err)
+      }
 
-  let python_path: string | undefined
+      resolve(stdout)
+    })
+  })
 
-  for (const candidate of python_path_candidates) {
-    if (await lookpath(candidate)) {
-      python_path = candidate
-      break
-    }
-  }
+  const [, python_location_match] =
+    stdout.match(/^Python location '(.*)'/m) ?? []
 
-  if (!python_path) {
-    console.error("Could not find python")
+  if (!python_location_match) {
+    console.error("Could not find python location from az cli")
     process.exitCode = 1
     process.exit()
   }
@@ -59,9 +54,13 @@ export const runAzureLocalCli = async (...args: string[]) => {
   }
 
   await new Promise<void>((resolve) => {
-    const proc = child_process.spawn(python_path, ["-c", script, ...args], {
-      stdio: "inherit",
-    })
+    const proc = child_process.spawn(
+      python_location_match,
+      ["-c", script, ...args],
+      {
+        stdio: "inherit",
+      },
+    )
 
     proc.on("exit", (code) => {
       resolve()

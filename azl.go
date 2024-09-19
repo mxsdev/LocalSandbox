@@ -37,7 +37,11 @@ func main() {
 	cmd.Stdin = os.Stdin
 	err = cmd.Run()
 
-	if err != nil {
-		panic(err)
+	exitCode := cmd.ProcessState.ExitCode()
+
+	if exitCode >= 0 {
+		os.Exit(exitCode)
 	}
+
+	panic(err)
 }
