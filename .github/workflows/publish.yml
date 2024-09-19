@@ -78,11 +78,11 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: localsandbox-${{ matrix.os }}-${{ matrix.arch }}
+          name: localsandbox-${{ matrix.osname }}-${{ matrix.arch }}
           path: ./
 
       - name: Extract artifact
-        run: tar -xzf localsandbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+        run: tar -xzf localsandbox-${{ matrix.osname }}-${{ matrix.arch }}.tar.gz
 
       - name: List files
         run: ls -la
