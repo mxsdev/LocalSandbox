@@ -22,6 +22,33 @@ public class AzureTests : IAsyncDisposable
 
     protected readonly ServiceBusClient sbClient;
 
+    // lazy initialized client
+    private readonly Lazy<ServiceBusManagementClient> serviceBusManagementClient;
+
+    protected async Task<string> CreateTopic()
+    {
+        if (e2eMode)
+        {
+            throw new NotImplementedException();
+        }
+
+        var topic = await serviceBusManagementClient.Value.Topics.CreateOrUpdateAsync(rg, ns, Guid.NewGuid().ToString(), new());
+
+        return topic.Name;
+    }
+
+    protected async Task<string> CreateSubscription(string topicName)
+    {
+        if (e2eMode)
+        {
+            throw new NotImplementedException();
+        }
+
+        var subscription = await serviceBusManagementClient.Value.Subscriptions.CreateOrUpdateAsync(rg, ns, topicName, Guid.NewGuid().ToString(), new());
+
+        return subscription.Name;
+    }
+
     protected async Task<string> CreateQueue(int? maxDeliveryCount = null, TimeSpan? autoDeleteOnIdle = null, string? forwardDeadLetteredMessagesTo = null, bool? deadLetteringOnMessageExpiration = null, TimeSpan? lockDuration = null, bool? requiresSession = null)
     {
         if (e2eMode)
@@ -43,13 +70,7 @@ public class AzureTests : IAsyncDisposable
         }
         else
         {
-            var client = new ServiceBusManagementClient(new TokenCredentials(subscriptionId))
-            {
-                SubscriptionId = subscriptionId,
-                BaseUri = !e2eMode ? new Uri($"https://localhost.localsandbox.sh:7329/azure") : null
-            };
-
-            var queue = await client.Queues.CreateOrUpdateAsync(rg, ns, Guid.NewGuid().ToString(), new()
+            var queue = await serviceBusManagementClient.Value.Queues.CreateOrUpdateAsync(rg, ns, Guid.NewGuid().ToString(), new()
             {
                 MaxDeliveryCount = maxDeliveryCount,
                 AutoDeleteOnIdle = autoDeleteOnIdle ?? TimeSpan.FromMinutes(10),
@@ -129,6 +150,12 @@ public class AzureTests : IAsyncDisposable
         {
             TransportType = ServiceBusTransportType.AmqpTcp,
             CustomEndpointAddress = !e2eMode ? new($"https://localhost.localsandbox.sh:5672") : null
+        });
+
+        serviceBusManagementClient = new(() => new ServiceBusManagementClient(new TokenCredentials(subscriptionId))
+        {
+            SubscriptionId = subscriptionId,
+            BaseUri = !e2eMode ? new Uri($"https://localhost.localsandbox.sh:7329/azure") : null
         });
     }
 
