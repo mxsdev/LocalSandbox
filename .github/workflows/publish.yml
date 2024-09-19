@@ -17,8 +17,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         arch: [x64, arm64]
+        include:
+          - os: ubuntu-latest
+            osname: linux
+          - os: windows-latest
+            osname: win
+          - os: macos-latest
+            osname: macos
     env:
-      BUNDLE_FILENAME: localsandbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+      BUNDLE_FILENAME: localsandbox-${{ matrix.osname }}-${{ matrix.arch }}.tar.gz
+      PKG_TARGET: ${{ matrix.osname }}-${{ matrix.arch }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -46,7 +54,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: localsandbox-${{ matrix.os }}-${{ matrix.arch }}
+          name: localsandbox-${{ matrix.osname }}-${{ matrix.arch }}
           path: ${{ env.BUNDLE_FILENAME }}
 
   smoke-test:
@@ -82,13 +90,13 @@ jobs:
       #     echo "" >> changelog.md
       #     git log -1 --pretty=format:"%s" >> changelog.md
 
-      - name: Create a Release
-        uses: elgohr/Github-Release-Action@v5
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          title: MyReleaseMessage
-          tag: MyTag
+      # - name: Create a Release
+      #   uses: elgohr/Github-Release-Action@v5
+      #   env:
+      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     title: MyReleaseMessage
+      #     tag: MyTag
 
       # - name: Create GitHub Release
       #   id: create_release
