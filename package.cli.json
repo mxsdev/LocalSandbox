@@ -2,6 +2,7 @@
   "name": "localsandbox",
   "bin": "./cli.js",
   "pkg": {
-    "scripts": "*.js"
+    "scripts": ["cli.js", "start-server.js"],
+    "assets": ["../../../packages/azure-local-cli/azure_local_cli/__main__.py"]
   }
 }

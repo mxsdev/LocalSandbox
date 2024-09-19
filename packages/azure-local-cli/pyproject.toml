@@ -13,8 +13,14 @@ azure-cli = "^2.64.0"
 # requires = ["setuptools>=42", "wheel", "nuitka", "toml"]
 # build-backend = "nuitka.distutils.Build"
 
+[tool.poetry-pyinstaller-plugin.scripts]
+azl = { source = "azure_local_cli/__main__.py", type = "onefile", bundle = false }
+
 [tool.poetry.group.dev.dependencies]
 nuitka = "^2.4.8"
 
 [tool.poetry.scripts]
 azl = "azure_local_cli.__main__:main"
+
+# [tool.poetry-pyinstaller-plugin.collect]
+# all = ['azure']

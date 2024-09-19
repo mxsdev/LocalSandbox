@@ -12,19 +12,11 @@ on:
 
 jobs:
   docker:
+    name: Build & Publish Docker Image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up python
-        id: setup-python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
 
       - name: Setup node
         uses: actions/setup-node@v4
@@ -42,6 +34,7 @@ jobs:
 
 
   bundle-cli:
+    name: Build & Bundle CLI
     strategy:
       matrix:
         include:
@@ -71,17 +64,19 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
+      # - name: Install Poetry
+      #   uses: snok/install-poetry@v1
 
-      - name: Add Poetry to PATH on windows-latest
-        if: matrix.osname == 'win'
-        shell: bash
-        run: |
-          echo "C:\Users\runneradmin\.local\bin" >> $GITHUB_PATH
+      # - name: Add Poetry to PATH on windows-latest
+      #   if: matrix.osname == 'win'
+      #   shell: bash
+      #   run: |
+      #     echo "C:\Users\runneradmin\.local\bin" >> $GITHUB_PATH
       
-      - name: Check Poetry
-        run: poetry --version
+      # - name: Check Poetry
+      #   run: poetry --version
+
+      - uses: actions/setup-go@v5
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -100,7 +95,8 @@ jobs:
           name: localsandbox-${{ matrix.osname }}-${{ matrix.arch }}
           path: ${{ env.BUNDLE_FILENAME }}
 
-  smoke-test:
+  smoke-test-cli:
+    name: Smoke Test CLI
     needs: bundle-cli
     strategy:
       matrix:
@@ -134,57 +130,55 @@ jobs:
       # - name: List files
       #   run: ls -la
 
-      - name: Set execute permission on Windows
-        if: matrix.os == 'windows-latest'
-        run: |
-          icacls localsandbox.exe /grant Everyone:F
+      # - name: Set execute permission on Windows
+      #   if: matrix.os == 'windows-latest'
+      #   run: |
+      #     icacls localsandbox.exe /grant Everyone:F
 
       - name: Smoke test localsandbox
         run: ./localsandbox${{ (matrix.osname == 'win' && '.exe') || '' }} --version
       
-      # - name: Smoke test azl
-      #   run: ./azl${{ (matrix.osname == 'win' && '.exe') || '' }} --version
+      - uses: pietrobolcato/install-azure-cli-action@main
 
-  # create-release:
-  #   needs: [bundle-cli, smoke-test]
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
+      - name: Test az cli
+        run: az --version
 
-  #     # - name: Generate Changelog
-  #     #   id: changelog
-  #     #   run: |
-  #     #     echo "## Changelog" > changelog.md
-  #     #     echo "" >> changelog.md
-  #     #     git log -1 --pretty=format:"%s" >> changelog.md
+      - name: Smoke test azl
+        run: ./azl${{ (matrix.osname == 'win' && '.exe') || '' }} --version
 
-  #     # - name: Create a Release
-  #     #   uses: elgohr/Github-Release-Action@v5
-  #     #   env:
-  #     #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #     #   with:
-  #     #     title: MyReleaseMessage
-  #     #     tag: MyTag
+  create-release:
+    needs: [bundle-cli, smoke-test-cli]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  #     # - name: Create GitHub Release
-  #     #   id: create_release
-  #     #   uses: actions/create-release@v1
-  #     #   env:
-  #     #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #     #   with:
-  #     #     tag_name: ${{ env.VERSION }}
-  #     #     release_name: Release ${{ env.VERSION }}
-  #     #     draft: false
-  #     #     prerelease: false
-  #     #     body_path: changelog.md
+      # - name: Create a Release
+      #   uses: elgohr/Github-Release-Action@v5
+      #   env:
+      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     title: MyReleaseMessage
+      #     tag: MyTag
 
-  #     # - name: Upload Release Assets
-  #     #   uses: actions/upload-release-asset@v1
-  #     #   env:
-  #     #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #     #   with:
-  #     #     upload_url: ${{ steps.create_release.outputs.upload_url }}
-  #     #     asset_path: ./localsandbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-  #     #     asset_name: localsandbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-  #     #     asset_content_type: application/gzip
+      # - name: Create GitHub Release
+      #   id: create_release
+      #   uses: actions/create-release@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     tag_name: ${{ env.VERSION }}
+      #     release_name: Release ${{ env.VERSION }}
+      #     draft: false
+      #     prerelease: false
+      #     body_path: changelog.md
+
+      # - name: Upload Release Assets
+      #   uses: actions/upload-release-asset@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+      #     asset_path: ./localsandbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+      #     asset_name: localsandbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+      #     asset_content_type: application/gzip

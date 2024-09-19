@@ -5,5 +5,11 @@
     "build": "npm run install && mkdir -p dist && poetry run python -m nuitka ./azure_local_cli --output-filename=./dist/azl --remove-output --assume-yes-for-downloads",
     "build:poetry": "poetry build",
     "generate:requirements": "poetry export -f requirements.txt --without-hashes --output requirements.txt"
+  },
+  "dependencies": {
+    "which": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/which": "^3.0.4"
   }
 }

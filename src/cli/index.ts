@@ -20,6 +20,7 @@ import {
   type StoreConfig,
 } from "lib/config/config-store.js"
 import path from "node:path"
+import { runAzureLocalCli } from "lib/cli/run-azure-local-cli.js"
 
 global.__dirname ??= import.meta.dirname
 
@@ -251,8 +252,22 @@ export const runCli = (_program: Command) => {
       }
     })
 
+  const azure_command = createCommand("azure")
+    .alias("az")
+    .alias("azl")
+    .description("Run azure cli command against the local server")
+    .helpCommand(false)
+    .helpOption(false)
+    .option("-v --version")
+    .argument("[args...]")
+    .allowUnknownOption()
+    .action(async (args) => {
+      await runAzureLocalCli(...args)
+    })
+
   program
     .version(version)
+    .addCommand(azure_command)
     .addCommand(run_cmd)
     .addCommand(start_cmd)
     .addCommand(stop_cmd)
