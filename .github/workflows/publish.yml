@@ -50,7 +50,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: ${{ matrix.osname == 'win' && "runas /user:Administrator 'npm install'" || "npm ci" }}
+        run: ${{ (matrix.osname == 'win' && 'runas /user:Administrator "npm install"') || 'npm ci' }}
 
       - name: Bundle CLI
         run: npm run bundle:cli
