@@ -153,13 +153,10 @@ jobs:
         if: matrix.osname == 'linux'
         run: curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
-      - name: Install winget (windows)
-        if: matrix.osname == 'win'
-        uses: Cyberboss/install-winget@v1
-
       - name: Install az cli (windows)
         if: matrix.osname == 'win'
-        run: winget install --all -e --id Microsoft.AzureCLI
+        shell: powershell
+        run: $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri https://aka.ms/installazurecliwindowsx64 -OutFile .\AzureCLI.msi; Start-Process msiexec.exe -Wait -ArgumentList '/I AzureCLI.msi /quiet'; Remove-Item .\AzureCLI.msi
 
       - name: Test az cli
         run: az --version
