@@ -36,10 +36,7 @@ public class QueueSubQueue : AzureTests
     public async void SubQueueFail()
     {
         var dlqName = await CreateQueue();
-        var queueName = await CreateQueue(new()
-        {
-            ForwardDeadLetteredMessagesTo = dlqName
-        });
+        var queueName = await CreateQueue(forwardDeadLetteredMessagesTo: dlqName);
 
         var receiverDlq = CreateReceiver(queueName, new ServiceBusReceiverOptions()
         {
@@ -48,14 +45,12 @@ public class QueueSubQueue : AzureTests
 
         try
         {
-            // TODO: why does this take so long to throw? Is that the same on prod?
             await receiverDlq.ReceiveMessageAsync(maxWaitTime: TimeSpan.FromMilliseconds(100));
             Assert.Fail("Expected exception to be thrown");
         }
-        catch (ServiceBusException e)
+        catch (InvalidOperationException e)
         {
             Assert.Matches("Cannot create a message receiver on an entity with auto-forwarding enabled", e.Message);
-            Assert.Equal(ServiceBusFailureReason.GeneralError, e.Reason);
         }
     }
 }

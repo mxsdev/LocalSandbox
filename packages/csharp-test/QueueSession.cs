@@ -7,10 +7,7 @@ public class QueueSession : AzureTests
     [Fact]
     public async void Complete()
     {
-        var queueName = await CreateQueue(new()
-        {
-            RequiresSession = true
-        });
+        var queueName = await CreateQueue(requiresSession: true);
 
         var sender = CreateSender(queueName);
 
@@ -31,10 +28,7 @@ public class QueueSession : AzureTests
     [Fact]
     public async void Locked()
     {
-        var queueName = await CreateQueue(new()
-        {
-            RequiresSession = true
-        });
+        var queueName = await CreateQueue(requiresSession: true);
 
         var sender = CreateSender(queueName);
         var sessionId = "session";
@@ -48,6 +42,9 @@ public class QueueSession : AzureTests
         Assert.NotNull(msg);
         Assert.Equal("1", msg.Body.ToString());
 
+        // TODO: test to ensure that message is immediately unlocked on close
+        await receiver.CompleteMessageAsync(msg);
+
         try
         {
             var receiver2 = await AcceptSession(queueName, sessionId);
@@ -55,8 +52,8 @@ public class QueueSession : AzureTests
         }
         catch (ServiceBusException e)
         {
-            Assert.Equal(ServiceBusFailureReason.GeneralError, e.Reason);
-            Assert.Matches("Failed to retreive session ID from broker. Please retry.", e.Message);
+            Assert.Equal(ServiceBusFailureReason.SessionCannotBeLocked, e.Reason);
+            Assert.Matches("The requested session 'session' cannot be accepted. It may be locked by another receiver", e.Message);
         }
 
         await receiver.CloseAsync();

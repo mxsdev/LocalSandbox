@@ -7,10 +7,7 @@ public class QueueRenewLock : AzureTests
     {
         var lockDuration = e2eMode ? TimeSpan.FromSeconds(5) : TimeSpan.FromMilliseconds(500);
 
-        var queueName = await CreateQueue(new()
-        {
-            LockDuration = lockDuration
-        });
+        var queueName = await CreateQueue(lockDuration: lockDuration);
 
         var sender = CreateSender(queueName);
 

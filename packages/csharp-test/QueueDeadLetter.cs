@@ -6,7 +6,7 @@ public class QueueDeadLetter : AzureTests
     public async void DeadLetter()
     {
         var dlqName = await CreateQueue();
-        var queueName = await CreateQueue(new() { ForwardDeadLetteredMessagesTo = dlqName });
+        var queueName = await CreateQueue(forwardDeadLetteredMessagesTo: dlqName);
 
         var sender = CreateSender(queueName);
 

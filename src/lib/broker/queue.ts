@@ -1160,6 +1160,13 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       },
     }
 
+    this.consumers.add({
+      sender,
+      listeners,
+      current_delivery: new DeliveryMap(this.logger),
+      schedule_for_deletion: false,
+      session_id: sessionId,
+    })
     ;(sender as any).local.attach.properties = {
       // TODO: support session locking
       "com.microsoft:locked-until-utc": unserializedLongToRheaParsable.parse(
@@ -1176,21 +1183,6 @@ export abstract class MessageSequence<M extends TaggedMessage> {
       expiry_policy: "session-end",
       timeout: 0,
       dynamic: false,
-      filter: {
-        [Constants.sessionFilterName]: undefined,
-      },
-    })
-
-    this.consumers.add({
-      sender,
-      listeners,
-      current_delivery: new DeliveryMap(this.logger),
-      schedule_for_deletion: false,
-      session_id: sessionId,
-    })
-
-    sender.set_source({
-      ...sender.source,
       filter: {
         [Constants.sessionFilterName]: sessionId,
       },

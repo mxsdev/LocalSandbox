@@ -38,3 +38,13 @@ export class SessionRequiredError extends StoreBusError {
     )
   }
 }
+
+export class AutoForwardingRequiredError extends StoreBusError {
+  constructor() {
+    super(
+      "AutoForwardingRequiredError",
+      ErrorNameConditionMapper.InvalidOperationError,
+      "Cannot create a message receiver on an entity with auto-forwarding enabled.",
+    )
+  }
+}

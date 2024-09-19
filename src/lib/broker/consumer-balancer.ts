@@ -24,6 +24,7 @@ import {
   isQualifiedTopicId,
   isQualifiedTopicOrQueueId,
 } from "./util.js"
+import { AutoForwardingRequiredError } from "./errors.js"
 
 type Queue = BrokerQueue<ParsedTypedRheaMessageWithId>
 type Topic = BrokerTopic<ParsedTypedRheaMessageWithId>
@@ -96,6 +97,15 @@ export class BrokerConsumerBalancer {
       this.store,
       this.logger,
     )
+
+    if (
+      qualifiedQueueId.subqueue === "deadletter" &&
+      queue.properties &&
+      "forwardDeadLetteredMessagesTo" in queue.properties &&
+      queue.properties.forwardDeadLetteredMessagesTo != null
+    ) {
+      throw new AutoForwardingRequiredError()
+    }
 
     this.getOrCreateMessageSource(queue, qualifiedQueueId.subqueue).addConsumer(
       sender,

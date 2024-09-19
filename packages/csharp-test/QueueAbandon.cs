@@ -5,10 +5,7 @@ public class QueueAbandon : AzureTests
     [Fact]
     public async void Abandon()
     {
-        var queueName = await CreateQueue(new()
-        {
-            MaxDeliveryCount = 1
-        });
+        var queueName = await CreateQueue(maxDeliveryCount: 1);
 
         var sender = CreateSender(queueName);
         var recevier = CreateReceiver(queueName);

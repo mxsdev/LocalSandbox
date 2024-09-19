@@ -98,27 +98,27 @@ export class AzureServiceBusBroker extends BrokerServer {
           },
         })
 
-      const respondFailure = (
-        consumer: Sender,
-        status: number,
-        statusDescription: string,
-        errorCondition?: string,
-      ) =>
-        consumer.send({
-          correlation_id: message.message_id,
-          body: {},
-          application_properties: {
-            [Constants.statusCode]: rhea.types.wrap_int(status),
-            // TODO: figure out why this is not automatically fixed upstream...
-            statusCode: rhea.types.wrap_int(status),
+      // const respondFailure = (
+      //   consumer: Sender,
+      //   status: number,
+      //   statusDescription: string,
+      //   errorCondition?: string,
+      // ) =>
+      //   consumer.send({
+      //     correlation_id: message.message_id,
+      //     body: {},
+      //     application_properties: {
+      //       [Constants.statusCode]: rhea.types.wrap_int(status),
+      //       // TODO: figure out why this is not automatically fixed upstream...
+      //       statusCode: rhea.types.wrap_int(status),
 
-            [Constants.errorCondition]: errorCondition,
-            errorCondition,
+      //       [Constants.errorCondition]: errorCondition,
+      //       errorCondition,
 
-            [Constants.statusDescription]: statusDescription,
-            statusDescription,
-          },
-        })
+      //       [Constants.statusDescription]: statusDescription,
+      //       statusDescription,
+      //     },
+      //   })
 
       if (message.reply_to && operation === Constants.operationPutToken) {
         const consumer = this.cbs_senders[message.reply_to]
@@ -174,22 +174,6 @@ export class AzureServiceBusBroker extends BrokerServer {
             this.store,
             this.logger,
           )
-
-        if (
-          subqueue === "deadletter" &&
-          queue_or_topic_or_subscription.properties &&
-          "forwardDeadLetteredMessagesTo" in
-            queue_or_topic_or_subscription.properties &&
-          queue_or_topic_or_subscription.properties
-            .forwardDeadLetteredMessagesTo != null
-        ) {
-          respondFailure(
-            consumer,
-            400,
-            "Cannot create a message receiver on an entity with auto-forwarding enabled.",
-          )
-          return
-        }
 
         const queueId = getQualifiedIdFromModel(queue_or_topic_or_subscription)
 
@@ -652,16 +636,17 @@ export class AzureServiceBusBroker extends BrokerServer {
         properties: sender.properties,
         source: sender.source.address,
         target: sender.target.address,
+        session: sender.source.filter?.[Constants.sessionFilterName],
       },
       "sender opened",
     )
-
-    sender.set_source({ address: sender.name })
 
     try {
       const queue = this.consumeHandshake(sender.connection)
 
       if (!queue) {
+        sender.set_source({ address: sender.name })
+
         this.cbs_senders[sender.target.address ?? sender.name] = sender
       } else {
         if (!isQualifiedMessageSourceId(queue)) {
@@ -676,6 +661,7 @@ export class AzureServiceBusBroker extends BrokerServer {
       }
     } catch (err) {
       if (err instanceof StoreBusError) {
+        this.logger?.info("SENDER ERROR CLOSING!")
         sender.close(err.amqpError)
         return
       }

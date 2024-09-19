@@ -3,13 +3,14 @@ using System.Reflection;
 using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
+using dotenv.net;
 using Microsoft.Azure.Management.ServiceBus;
 using Microsoft.Azure.Management.ServiceBus.Models;
 using Microsoft.Rest;
 
 public class AzureTests : IAsyncDisposable
 {
-    protected readonly bool e2eMode = Environment.GetEnvironmentVariable("AZURE_E2E") == "true";
+    protected readonly bool e2eMode;
 
     private readonly string subscriptionId;
 
@@ -21,47 +22,45 @@ public class AzureTests : IAsyncDisposable
 
     protected readonly ServiceBusClient sbClient;
 
-    protected async Task<string> CreateQueue()
+    protected async Task<string> CreateQueue(int? maxDeliveryCount = null, TimeSpan? autoDeleteOnIdle = null, string? forwardDeadLetteredMessagesTo = null, bool? deadLetteringOnMessageExpiration = null, TimeSpan? lockDuration = null, bool? requiresSession = null)
     {
-        return await CreateQueue(new());
-    }
-
-    protected async Task<string> CreateQueue(SBQueue queueOptions)
-    {
-        queueOptions.AutoDeleteOnIdle ??= TimeSpan.FromMinutes(10);
-
-        var client = new ServiceBusManagementClient(new TokenCredentials(subscriptionId))
+        if (e2eMode)
         {
-            SubscriptionId = subscriptionId,
-            BaseUri = !e2eMode ? new Uri($"https://localhost.localsandbox.sh:7329/azure") : null
-        };
+            var client = new ServiceBusAdministrationClient(e2eMode ? $"{ns}.servicebus.windows.net" : $"localhost.localsandbox.sh/{ns}", new DefaultAzureCredential());
 
-        var queue = await client.Queues.CreateOrUpdateAsync(rg, ns, Guid.NewGuid().ToString(), queueOptions);
+            var queue = (await client.CreateQueueAsync(new CreateQueueOptions(Guid.NewGuid().ToString())
+            {
+                MaxDeliveryCount = maxDeliveryCount ?? 10,
+                AutoDeleteOnIdle = autoDeleteOnIdle ?? TimeSpan.MaxValue,
+                ForwardDeadLetteredMessagesTo = forwardDeadLetteredMessagesTo,
+                DeadLetteringOnMessageExpiration = deadLetteringOnMessageExpiration ?? false,
+                LockDuration = lockDuration ?? TimeSpan.FromSeconds(60),
+                RequiresSession = requiresSession ?? false
+            }
+            )).Value;
 
-        return queue.Name;
+            return queue.Name;
+        }
+        else
+        {
+            var client = new ServiceBusManagementClient(new TokenCredentials(subscriptionId))
+            {
+                SubscriptionId = subscriptionId,
+                BaseUri = !e2eMode ? new Uri($"https://localhost.localsandbox.sh:7329/azure") : null
+            };
 
-        // if (e2eMode)
-        // {
-        // var client = new ServiceBusAdministrationClient(e2eMode ? $"{ns}.servicebus.windows.net" : $"localhost.localsandbox.sh/{ns}", new DefaultAzureCredential());
+            var queue = await client.Queues.CreateOrUpdateAsync(rg, ns, Guid.NewGuid().ToString(), new()
+            {
+                MaxDeliveryCount = maxDeliveryCount,
+                AutoDeleteOnIdle = autoDeleteOnIdle ?? TimeSpan.FromMinutes(10),
+                ForwardDeadLetteredMessagesTo = forwardDeadLetteredMessagesTo,
+                DeadLetteringOnMessageExpiration = deadLetteringOnMessageExpiration,
+                LockDuration = lockDuration,
+                RequiresSession = requiresSession,
+            });
 
-        // QueueProperties
-
-        // var queue = (await client.CreateQueueAsync(new CreateQueueOptions(queueOptions))).Value;
-
-        // return queue.Name;
-        // }
-        // else
-        // {
-        //     var client = new ServiceBusManagementClient(new TokenCredentials(subscriptionId))
-        //     {
-        //         SubscriptionId = subscriptionId,
-        //         BaseUri = new Uri($"https://localhost.localsandbox.sh:7329/azure")
-        //     };
-
-        //     var queue = await client.Queues.CreateOrUpdateAsync(rg, ns, Guid.NewGuid().ToString(), queueOptions);
-
-        //     return queue.Name;
-        // }
+            return queue.Name;
+        }
     }
 
     private readonly List<IAsyncDisposable> disposables = [];
@@ -111,6 +110,10 @@ public class AzureTests : IAsyncDisposable
 
     public AzureTests()
     {
+        // DotEnv.Load(options: new DotEnvOptions(ignoreExceptions: false, envFilePaths: ["../../../.env"]));
+
+        e2eMode = Environment.GetEnvironmentVariable("AZURE_E2E") == "true";
+
         // TODO: remove this line
         Trace.Listeners.Clear();
 

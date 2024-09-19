@@ -6,11 +6,10 @@ public class QueueDeadLetterMessageExpiration : AzureTests
     public async void DeadLetterMessageExpiration()
     {
         var dlqName = await CreateQueue();
-        var queueName = await CreateQueue(new()
-        {
-            DeadLetteringOnMessageExpiration = true,
-            ForwardDeadLetteredMessagesTo = dlqName
-        });
+        var queueName = await CreateQueue(
+            deadLetteringOnMessageExpiration: true,
+            forwardDeadLetteredMessagesTo: dlqName
+        );
 
         var ttl = TimeSpan.FromMilliseconds(200);
 
