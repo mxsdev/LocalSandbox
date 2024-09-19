@@ -153,11 +153,13 @@ jobs:
         if: matrix.osname == 'linux'
         run: curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
-      - name: Install az cli (windows)
-        uses: crazy-max/ghaction-chocolatey@v3
+      - name: Install winget (windows)
         if: matrix.osname == 'win'
-        with:
-          args: install azure-cli
+        uses: Cyberboss/install-winget@v1
+
+      - name: Install az cli (windows)
+        if: matrix.osname == 'win'
+        run: winget install -e --id Microsoft.AzureCLI
 
       - name: Test az cli
         run: az --version
