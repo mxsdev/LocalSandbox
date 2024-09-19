@@ -64,6 +64,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         arch: [x64, arm64]
+        include:
+          - os: ubuntu-latest
+            osname: linux
+          - os: windows-latest
+            osname: win
+          - os: macos-latest
+            osname: macos
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -73,6 +80,15 @@ jobs:
         with:
           name: localsandbox-${{ matrix.os }}-${{ matrix.arch }}
           path: ./
+
+      - name: Extract artifact
+        run: tar -xzf localsandbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+
+      - name: List files
+        run: ls -la
+
+      - name: Run smoke tests
+        run: ./localsandbox --version
 
       # Add your smoke test steps here
 
