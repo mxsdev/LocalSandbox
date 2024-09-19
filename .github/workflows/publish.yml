@@ -120,6 +120,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Homebrew
+        if: matrix.osname == 'macos'
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
@@ -140,7 +145,19 @@ jobs:
       - name: Smoke test localsandbox
         run: ./localsandbox${{ (matrix.osname == 'win' && '.exe') || '' }} --version
       
-      - uses: pietrobolcato/install-azure-cli-action@main
+      - name: Install az cli (macos)
+        if: matrix.osname == 'macos'
+        run: brew update && brew install azure-cli
+
+      - name: Install az cli (linux)
+        if: matrix.osname == 'linux'
+        run: curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+      - name: Install az cli (windows)
+        uses: crazy-max/ghaction-chocolatey@v3
+        if: matrix.osname == 'win'
+        with:
+          args: install azure-cli
 
       - name: Test az cli
         run: az --version
