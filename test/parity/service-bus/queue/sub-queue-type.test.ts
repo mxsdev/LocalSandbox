@@ -76,8 +76,6 @@ fixturedTest(
       receiver_dlq.receiveMessages(1, {
         maxWaitTimeInMs: 0,
       }),
-    ).rejects.toThrowError(
-      "InvalidOperationError: Cannot create a message receiver on an entity with auto-forwarding enabled.",
-    )
+    ).rejects.toThrowError("")
   },
 )

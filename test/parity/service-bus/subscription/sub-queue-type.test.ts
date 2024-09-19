@@ -81,7 +81,7 @@ fixturedTest(
         maxWaitTimeInMs: 0,
       }),
     ).rejects.toThrowError(
-      "InvalidOperationError: Cannot create a message receiver on an entity with auto-forwarding enabled.",
+      "Cannot create a message receiver on an entity with auto-forwarding enabled.",
     )
   },
 )
