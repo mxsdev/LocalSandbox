@@ -159,7 +159,7 @@ jobs:
 
       - name: Install az cli (windows)
         if: matrix.osname == 'win'
-        run: winget install --accept-package-agreements --accept-source-agreements -e --id Microsoft.AzureCLI
+        run: winget install --all -e --id Microsoft.AzureCLI
 
       - name: Test az cli
         run: az --version
