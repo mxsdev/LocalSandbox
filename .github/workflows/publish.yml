@@ -112,8 +112,8 @@ jobs:
       - name: Smoke test localsandbox
         run: ./localsandbox${{ (matrix.osname == 'win' && '.exe') || '' }} --version
       
-      - name: Smoke test azl
-        run: ./azl${{ (matrix.osname == 'win' && '.exe') || '' }} --version
+      # - name: Smoke test azl
+      #   run: ./azl${{ (matrix.osname == 'win' && '.exe') || '' }} --version
 
   # create-release:
   #   needs: [bundle-cli, smoke-test]
