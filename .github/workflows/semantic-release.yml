@@ -8,6 +8,7 @@ on:
 jobs:
   version:
     runs-on: ubuntu-latest
+    name: Version
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
