@@ -24,7 +24,10 @@ import {
   isQualifiedTopicId,
   isQualifiedTopicOrQueueId,
 } from "./util.js"
-import { AutoForwardingRequiredError } from "./errors.js"
+import {
+  AutoForwardingRequiredError,
+  CannotCreateSessionfulReceiverError,
+} from "./errors.js"
 
 type Queue = BrokerQueue<ParsedTypedRheaMessageWithId>
 type Topic = BrokerTopic<ParsedTypedRheaMessageWithId>
@@ -97,6 +100,12 @@ export class BrokerConsumerBalancer {
       this.store,
       this.logger,
     )
+
+    const sessionId = sender.source.filter?.[Constants.sessionFilterName]
+
+    if (!queue.properties.requiresSession && sessionId) {
+      throw new CannotCreateSessionfulReceiverError()
+    }
 
     if (
       qualifiedQueueId.subqueue === "deadletter" &&

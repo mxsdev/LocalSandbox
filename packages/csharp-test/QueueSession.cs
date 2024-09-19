@@ -84,4 +84,20 @@ public class QueueSession : AzureTests
             Assert.Matches("The SessionId was not set on a message, and it cannot be sent to the entity. Entities that have session support enabled can only receive messages that have the SessionId set to a valid value.", e.Message);
         }
     }
+
+    [Fact]
+    public async void RequiresSessionDisabled()
+    {
+        var queueName = await CreateQueue(requiresSession: false);
+
+        try
+        {
+            await AcceptSession(queueName, "session");
+            Assert.Fail("Expected exception to be thrown");
+        }
+        catch (InvalidOperationException e)
+        {
+            Assert.Matches("A sessionful message receiver cannot be created on an entity that does not require sessions. Ensure RequiresSession is set to true when creating a Queue or Subscription to enable sessionful behavior.", e.Message);
+        }
+    }
 }

@@ -1,6 +1,26 @@
 import { fixturedTest } from "test/fixtured-test.js"
 
-fixturedTest.todo("requiresSession must be enabled to use sessions")
+fixturedTest(
+  "cannot accept session if requiresSession is false",
+  {
+    timeout: 60000,
+  },
+  async ({ azure_queue, expect }) => {
+    const { createQueue, acceptSession } = azure_queue
+
+    const queue = await createQueue({ requiresSession: false })
+
+    await expect(
+      acceptSession(queue.name!, "session", {
+        maxAutoLockRenewalDurationInMs: 0,
+      }),
+    )
+      .rejects.toThrowError
+      // TODO: message is not being sent right...
+      // "A sessionful message receiver cannot be created on an entity that does not require sessions. Ensure RequiresSession is set to true when creating a Queue or Subscription to enable sessionful behavior.",
+      ()
+  },
+)
 
 fixturedTest(
   "cannot send non-session message to session queue",

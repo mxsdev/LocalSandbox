@@ -661,7 +661,6 @@ export class AzureServiceBusBroker extends BrokerServer {
       }
     } catch (err) {
       if (err instanceof StoreBusError) {
-        this.logger?.info("SENDER ERROR CLOSING!")
         sender.close(err.amqpError)
         return
       }

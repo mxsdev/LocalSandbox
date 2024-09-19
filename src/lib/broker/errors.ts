@@ -39,6 +39,16 @@ export class SessionRequiredError extends StoreBusError {
   }
 }
 
+export class CannotCreateSessionfulReceiverError extends StoreBusError {
+  constructor() {
+    super(
+      "CannotCreateSessionfulReceiverError",
+      ErrorNameConditionMapper.InvalidOperationError,
+      "A sessionful message receiver cannot be created on an entity that does not require sessions. Ensure RequiresSession is set to true when creating a Queue or Subscription to enable sessionful behavior.",
+    )
+  }
+}
+
 export class AutoForwardingRequiredError extends StoreBusError {
   constructor() {
     super(
