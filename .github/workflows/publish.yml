@@ -47,6 +47,9 @@ jobs:
 
       - name: Check host arch
         run: node -e "console.log(process.platform)"
+      
+      - name: Check host arch
+        run: node -e "console.log(process.arch)"
 
       # - name: Install dependencies
       #   run: npm ci
