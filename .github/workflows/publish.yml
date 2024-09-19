@@ -101,8 +101,8 @@ jobs:
       - name: Extract artifact
         run: tar -xzf localsandbox-${{ matrix.osname }}-${{ matrix.arch }}.tar.gz
 
-      - name: List files
-        run: ls -la
+      # - name: List files
+      #   run: ls -la
 
       - name: Set execute permission on Windows
         if: matrix.os == 'windows-latest'
