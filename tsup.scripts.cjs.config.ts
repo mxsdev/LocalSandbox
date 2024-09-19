@@ -7,7 +7,9 @@ export default defineConfig({
   outDir: "./dist/scripts/cjs",
 
   format: "cjs",
-  legacyOutput: true,
+  outExtension: () => ({
+    js: ".js",
+  }),
 
   // banner: {
   //   js: "import { createRequire } from 'module';const require = createRequire(import.meta.url); const __filename = import.meta.filename; const __dirname = import.meta.dirname;",
