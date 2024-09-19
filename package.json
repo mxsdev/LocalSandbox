@@ -76,6 +76,7 @@
     "@types/node": "^22.5.4",
     "@types/pino": "^7.0.5",
     "@types/swagger-schema-official": "^2.0.25",
+    "@yao-pkg/pkg": "^5.14.2",
     "bundle-require": "^5.0.0",
     "change-case": "^5.4.4",
     "cross-env": "^7.0.3",
