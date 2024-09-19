@@ -82,3 +82,6 @@ cloud.AZURE_PUBLIC_CLOUD.endpoints.resource_manager = endpoint
 cloud.AZURE_PUBLIC_CLOUD.endpoints.active_directory = endpoint
 
 from azure.cli import __main__
+
+def main():
+    pass

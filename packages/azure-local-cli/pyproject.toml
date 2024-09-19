@@ -15,3 +15,6 @@ azure-cli = "^2.64.0"
 
 [tool.poetry.group.dev.dependencies]
 nuitka = "^2.4.8"
+
+[tool.poetry.scripts]
+azl = "azure_local_cli.__main__:main"
