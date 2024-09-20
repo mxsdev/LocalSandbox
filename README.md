@@ -1,4 +1,4 @@
-# localsandbox
+# LocalSandbox
 
 LocalSandbox is a local emulator for Azure cloud services. Currently, the focus is on supporting [Azure Service Bus](https://docs.microsoft.com/en-us/azure/service-bus-messaging/service-bus-messaging-overview) but other services are planned.
 
