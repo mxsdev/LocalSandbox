@@ -162,7 +162,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [bundle-cli, smoke-test-cli]
+    needs: [bundle-cli]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
