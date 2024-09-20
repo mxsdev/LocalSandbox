@@ -18,7 +18,6 @@ func runAzureLocalCli(args ...string) error {
 	azPath, err := exec.LookPath("az")
 	if err != nil || azPath == "" {
 		fmt.Fprintln(os.Stderr, "Could not find az cli in PATH")
-		fmt.Fprintln(os.Stdout, "Could not find az cli in PATH")
 		os.Exit(1)
 	}
 
@@ -33,7 +32,7 @@ func runAzureLocalCli(args ...string) error {
 	}
 
 	pythonLocationMatch := ""
-	for _, line := range strings.Split(stdout.String(), "\n") {
+	for _, line := range strings.Split(strings.ReplaceAll(stdout.String(), "\r\n", "\n"), "\n") {
 		if strings.HasPrefix(line, "Python location '") {
 			pythonLocationMatch = strings.TrimPrefix(line, "Python location '")
 			pythonLocationMatch = strings.TrimSuffix(pythonLocationMatch, "'")
@@ -43,7 +42,6 @@ func runAzureLocalCli(args ...string) error {
 
 	if pythonLocationMatch == "" {
 		fmt.Fprintln(os.Stderr, "Could not find python location from az cli")
-		fmt.Fprintln(os.Stdout, "Could not find python location from az cli")
 		os.Exit(1)
 	}
 
@@ -60,7 +58,6 @@ func runAzureLocalCli(args ...string) error {
 
 func main() {
 	if err := runAzureLocalCli(os.Args[1:]...); err != nil {
-		fmt.Fprintln(os.Stdout, err.Error())
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
