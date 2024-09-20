@@ -2,13 +2,9 @@ name: Deploy CLI
 
 on:
   push:
-    branches:
-      - main
-
-# on:
-#   push:
-#     tags:
-#       - v*
+    tags:
+      - v*
+  workflow_dispatch:
 
 jobs:
   docker:
@@ -18,6 +14,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Get tag
+        id: tag
+        uses: dawidd6/action-get-tag@v1
+        with:
+          strip_v: true
+
       - name: Setup node
         uses: actions/setup-node@v4
         with:
@@ -25,12 +27,26 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
+            
       - name: Build
         run: npm run build:docker
 
       - name: Build image
-        run: docker build -t localsandbox .
+        run: docker build -t localsandbox/localsandbox .
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Publish image
+        run: docker push localsandbox/localsandbox:latest
+
+      - name: Publish image with tag
+        run: |
+          docker tag localsandbox/localsandbox localsandbox/localsandbox:${{ steps.get_tag.outputs.tag }}
+          docker push localsandbox/localsandbox:${{ steps.tag.outputs.tag }}
 
 
   bundle-cli:
@@ -63,18 +79,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      # - name: Install Poetry
-      #   uses: snok/install-poetry@v1
-
-      # - name: Add Poetry to PATH on windows-latest
-      #   if: matrix.osname == 'win'
-      #   shell: bash
-      #   run: |
-      #     echo "C:\Users\runneradmin\.local\bin" >> $GITHUB_PATH
-      
-      # - name: Check Poetry
-      #   run: poetry --version
 
       - uses: actions/setup-go@v5
         with:
@@ -134,14 +138,6 @@ jobs:
       - name: Extract artifact
         run: tar -xzf localsandbox-${{ matrix.osname }}-${{ matrix.arch }}.tar.gz
 
-      # - name: List files
-      #   run: ls -la
-
-      # - name: Set execute permission on Windows
-      #   if: matrix.os == 'windows-latest'
-      #   run: |
-      #     icacls localsandbox.exe /grant Everyone:F
-
       - name: Smoke test localsandbox
         run: ./localsandbox${{ (matrix.osname == 'win' && '.exe') || '' }} --version
       
@@ -171,32 +167,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # - name: Create a Release
-      #   uses: elgohr/Github-Release-Action@v5
-      #   env:
-      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     title: MyReleaseMessage
-      #     tag: MyTag
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: ./
 
-      # - name: Create GitHub Release
-      #   id: create_release
-      #   uses: actions/create-release@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     tag_name: ${{ env.VERSION }}
-      #     release_name: Release ${{ env.VERSION }}
-      #     draft: false
-      #     prerelease: false
-      #     body_path: changelog.md
-
-      # - name: Upload Release Assets
-      #   uses: actions/upload-release-asset@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
-      #     asset_path: ./localsandbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-      #     asset_name: localsandbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-      #     asset_content_type: application/gzip
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files:
+            | 
+              localsandbox-linux-x64.tar.gz
+              localsandbox-win-x64.tar.gz
+              localsandbox-macos-arm64.tar.gz
+              localsandbox-macos-x64.tar.gz
