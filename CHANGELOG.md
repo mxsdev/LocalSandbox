@@ -1,3 +1,11 @@
+## [1.0.2](https://github.com/mxsdev/LocalSandbox/compare/v1.0.1...v1.0.2) (2024-09-20)
+
+
+### Performance Improvements
+
+* disable cert caching for now ([0c87dc5](https://github.com/mxsdev/LocalSandbox/commit/0c87dc5604648b9aa12675c888794d84f7349188))
+* improve UX for default resources config ([12a7e64](https://github.com/mxsdev/LocalSandbox/commit/12a7e64361c0cec2abe96613ab8efa30d3d22aac))
+
 ## [1.0.1](https://github.com/mxsdev/LocalSandbox/compare/v1.0.0...v1.0.1) (2024-09-20)
 
 
