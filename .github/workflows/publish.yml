@@ -45,6 +45,7 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64
           push: true
+          context: .
           tags: |
             localsandbox/localsandbox:latest
             localsandbox/localsandbox:${{ steps.tag.outputs.tag }}
