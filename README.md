@@ -2,7 +2,11 @@
 
 LocalSandbox is a local emulator for Azure cloud services. Currently, the focus is on supporting [Azure Service Bus](https://docs.microsoft.com/en-us/azure/service-bus-messaging/service-bus-messaging-overview) but other services are planned.
 
-<!-- TODO: mention discord for support -->
+## Help & Support
+
+I have opened a [Discord server](https://discord.gg/MbauZyqzmj) for support. I'll be available there to help debug any issues you may have.
+
+Alternatively, feel free to open a [GitHub issue](https://github.com/mxsdev/LocalSandbox/issues/new) if you have a feature request or bug report.
 
 ## Quickstart
 
@@ -13,7 +17,7 @@ docker run --name localsandbox -d -p 7329:7329 -p 5672:5672 localsandbox/localsa
 ```
 
 > [!NOTE]
-> Alternatively, you can run the emulator directly on your machine by downloading the latest binary release from the [releases page](/releases) and running `localsandbox run` (or `localsandbox start` to launch in the background).
+> Alternatively, you can run the emulator directly on your machine by downloading the latest binary release from the [releases page](https://github.com/mxsdev/LocalSandbox/releases) and running `localsandbox run` (or `localsandbox start` to launch in the background).
 
 A basic message can then be sent and received using the following code:
 
@@ -113,4 +117,4 @@ Console.WriteLine("Created Queue: " + queue.Name);
   - [ ] All CRUD REST API endpoints
 - [ ] Azure Storage (w/ Azurite)
 - [ ] Azure Event Hubs (w/ MS Emulator)
-- [ ] [Let me know what you want!](/issues)
+- [ ] [Let me know what you want!](https://github.com/mxsdev/LocalSandbox/issues/new)
