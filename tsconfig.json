@@ -34,7 +34,7 @@
     "src/**/*.ts",
     "test/**/*.ts",
     "./vitest.config.ts",
-    "./tsup.*.ts",
+    "./conf/tsup.*.ts",
     "./scripts/**/*.ts"
   ]
 }
