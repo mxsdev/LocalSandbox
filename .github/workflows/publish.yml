@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - v*
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 jobs:
   docker:
@@ -45,7 +45,7 @@ jobs:
 
       - name: Publish image with tag
         run: |
-          docker tag localsandbox/localsandbox localsandbox/localsandbox:${{ steps.get_tag.outputs.tag }}
+          docker tag localsandbox/localsandbox localsandbox/localsandbox:${{ steps.tag.outputs.tag }}
           docker push localsandbox/localsandbox:${{ steps.tag.outputs.tag }}
 
 
@@ -98,7 +98,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: localsandbox-${{ matrix.osname }}-${{ matrix.arch }}
+          name: localsandbox-${{ matrix.osname }}-${{ matrix.arch }}.tar.gz
           path: ${{ env.BUNDLE_FILENAME }}
 
   smoke-test-cli:
@@ -132,7 +132,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: localsandbox-${{ matrix.osname }}-${{ matrix.arch }}
+          name: localsandbox-${{ matrix.osname }}-${{ matrix.arch }}.tar.gz
           path: ./
 
       - name: Extract artifact
