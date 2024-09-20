@@ -158,6 +158,7 @@ jobs:
         run: ./azl${{ (matrix.osname == 'win' && '.exe') || '' }} --version
 
   create-release:
+    name: Create GitHub Release
     needs: [bundle-cli, smoke-test-cli]
     runs-on: ubuntu-latest
     steps:
@@ -176,7 +177,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           files:
             | 
-              localsandbox-linux-x64.tar.gz
-              localsandbox-win-x64.tar.gz
-              localsandbox-macos-arm64.tar.gz
-              localsandbox-macos-x64.tar.gz
+              ./localsandbox-linux-x64.tar.gz
+              ./localsandbox-win-x64.tar.gz
+              ./localsandbox-macos-arm64.tar.gz
+              ./localsandbox-macos-x64.tar.gz
