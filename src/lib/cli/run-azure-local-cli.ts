@@ -15,8 +15,6 @@ export const runAzureLocalCli = async (...args: string[]) => {
     process.exit()
   }
 
-  // const az_abs_path = await fs.realpath(az_path)
-
   const stdout = await new Promise<string>((resolve, reject) => {
     child_process.exec(`${az_path} --version`, {}, (err, stdout, stderr) => {
       if (err) {

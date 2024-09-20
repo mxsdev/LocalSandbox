@@ -4,13 +4,18 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
 	"runtime"
 )
 
 func main() {
 	// execute local file
 	ex, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+
+	ex, err = filepath.Abs(ex)
 	if err != nil {
 		panic(err)
 	}
@@ -22,7 +27,7 @@ func main() {
 		ext = ".exe"
 	}
 
-	execPath := path.Join(path.Dir(ex), "localsandbox"+ext)
+	execPath := filepath.Join(filepath.Dir(ex), "localsandbox"+ext)
 
 	// check if localsandbox exists
 	if _, err := os.Stat(execPath); os.IsNotExist(err) {

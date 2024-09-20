@@ -32,7 +32,8 @@
     "build:esm": "tsup --config ./tsup.esm.config.ts && resolve-tspaths --out ./dist/esm && shx cp ./package.esm.json ./dist/esm/package.json",
     "build:cjs": "tsup --config ./tsup.cjs.config.ts && resolve-tspaths --out ./dist/cjs && shx cp ./package.cjs.json ./dist/cjs/package.json && renamer --find .d.cts --replace .d.ts ./dist/cjs/**/*.d.cts",
     "build:scripts:cjs": "tsup --config ./tsup.scripts.cjs.config.ts && shx cp ./package.cli.json ./dist/scripts/cjs/package.json",
-    "build:cli": "npm run build:scripts:cjs && cross-env-shell pkg ./dist/scripts/cjs --out-path ./dist/binary -t node20-$PKG_TARGET --debug && npm run build:cli:azl",
+    "build:cli": "npm run build:scripts:cjs && npm run build:cli:localsandbox && npm run build:cli:azl",
+    "build:cli:localsandbox": "cross-env-shell pkg ./dist/scripts/cjs --out-path ./dist/binary -t node20-$PKG_TARGET --debug",
     "build:cli:azl": "tsx ./scripts/build-azl-go.ts",
     "bundle:cli": "npm run build:cli && tsx ./scripts/bundle-cli.ts"
   },
@@ -61,6 +62,7 @@
     "pino-pretty": "^11.2.2",
     "rhea": "^3.0.2",
     "rhea-promise": "^3.0.3",
+    "which": "^4.0.0",
     "write-file-atomic": "^5.0.1",
     "xdg-app-paths": "^8.3.0",
     "zod": "^3.23.8"
@@ -80,6 +82,7 @@
     "@types/node": "^22.5.4",
     "@types/pino": "^7.0.5",
     "@types/swagger-schema-official": "^2.0.25",
+    "@types/which": "^3.0.4",
     "@yao-pkg/pkg": "^5.14.2",
     "bundle-require": "^5.0.0",
     "change-case": "^5.4.4",
