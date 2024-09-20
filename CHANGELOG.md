@@ -1,3 +1,15 @@
+## [1.0.1](https://github.com/mxsdev/LocalSandbox/compare/v1.0.0...v1.0.1) (2024-09-20)
+
+
+### Performance Improvements
+
+* smaller multiarch docker build ([18f1352](https://github.com/mxsdev/LocalSandbox/commit/18f13524d2f32349667d4220365863da61bd065b))
+
+
+### Reverts
+
+* Revert "chore(release): 1.0.1 [skip ci]" ([97b0eae](https://github.com/mxsdev/LocalSandbox/commit/97b0eae2447dfbfa2c39fa236b035186f4a18d1c))
+
 # 1.0.0 (2024-09-20)
 
 
