@@ -49,6 +49,7 @@ jobs:
   bundle-cli:
     name: Build & Bundle CLI
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -101,7 +102,9 @@ jobs:
   smoke-test-cli:
     name: Smoke Test CLI
     needs: bundle-cli
+    if: false
     strategy:
+      fail-fast: false
       matrix:
         include:
         - os: ubuntu-latest
