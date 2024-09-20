@@ -18,14 +18,16 @@ export class ConfigCertificateStore implements CertificateStore {
   ) {}
 
   async get() {
-    const { cert } = this.config.get()
+    // TODO: re-enable cert caching
 
-    if (cert && new Date(cert.expiration) > new Date()) {
-      return cert
-    } else if (cert) {
-      // invalidate cert
-      this.config.update({ cert: undefined })
-    }
+    // const { cert } = this.config.get()
+
+    // if (cert && new Date(cert.expiration) > new Date()) {
+    //   return cert
+    // } else if (cert) {
+    //   // invalidate cert
+    //   this.config.update({ cert: undefined })
+    // }
 
     const tls = z
       .object({
