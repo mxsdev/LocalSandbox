@@ -1,52 +1,63 @@
 package main
 
 import (
-	"log"
+	"bytes"
+	_ "embed"
+	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
+	"strings"
 )
 
+// Embed the Python script at compile time
+//
+//go:embed packages/azure-local-cli/azure_local_cli/__main__.py
+var embeddedScript string
+
+func runAzureLocalCli(args ...string) error {
+	azPath, err := exec.LookPath("az")
+	if err != nil || azPath == "" {
+		fmt.Fprintln(os.Stderr, "Could not find az cli in PATH")
+		os.Exit(1)
+	}
+
+	cmd := exec.Command(azPath, "--version")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, stderr.String())
+		return err
+	}
+
+	pythonLocationMatch := ""
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.HasPrefix(line, "Python location '") {
+			pythonLocationMatch = strings.TrimPrefix(line, "Python location '")
+			pythonLocationMatch = strings.TrimSuffix(pythonLocationMatch, "'")
+			break
+		}
+	}
+
+	if pythonLocationMatch == "" {
+		fmt.Fprintln(os.Stderr, "Could not find python location from az cli")
+		os.Exit(1)
+	}
+
+	pythonCmd := exec.Command(pythonLocationMatch, append([]string{"-c", embeddedScript}, args...)...)
+	pythonCmd.Stdout = os.Stdout
+	pythonCmd.Stderr = os.Stderr
+
+	if err := pythonCmd.Run(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
-	// execute local file
-	ex, err := os.Executable()
-	if err != nil {
-		panic(err)
+	if err := runAzureLocalCli(os.Args[1:]...); err != nil {
+		os.Exit(1)
 	}
-
-	ex, err = filepath.Abs(ex)
-	if err != nil {
-		panic(err)
-	}
-
-	ext := ""
-
-	// if on windows
-	if runtime.GOOS == "windows" {
-		ext = ".exe"
-	}
-
-	execPath := filepath.Join(filepath.Dir(ex), "localsandbox"+ext)
-
-	// check if localsandbox exists
-	if _, err := os.Stat(execPath); os.IsNotExist(err) {
-		log.Fatal("localsandbox executable not found")
-	}
-
-	// forward execution to execPath with args
-	cmd := exec.Command(execPath, os.Args[1:]...)
-	cmd.Env = append(os.Environ(), "LOCALSANDBOX_AZ_LOCAL=true")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-	err = cmd.Run()
-
-	exitCode := cmd.ProcessState.ExitCode()
-
-	if exitCode >= 0 {
-		os.Exit(exitCode)
-	}
-
-	panic(err)
 }

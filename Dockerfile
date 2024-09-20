@@ -14,9 +14,7 @@ WORKDIR /app
 COPY ./dist/scripts/cjs/* /app/
 
 RUN mkdir -p /app/azl
-RUN echo "#!/bin/sh" > /app/azl/azl
-RUN echo "node /app/azure-local-cli.js \$@" >> /app/azl/azl
-RUN chmod +x /app/azl/azl
+COPY ./dist/binary/azl-alpine /app/azl/azl
 ENV PATH="/app/azl:${PATH}"
 
 RUN azl --version

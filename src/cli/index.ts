@@ -20,7 +20,7 @@ import {
   type StoreConfig,
 } from "lib/config/config-store.js"
 import path from "node:path"
-import { runAzureLocalCli } from "lib/cli/run-azure-local-cli.js"
+import { lookpath } from "lookpath"
 
 global.__dirname ??= import.meta.dirname
 
@@ -262,7 +262,25 @@ export const runCli = (_program: Command) => {
     .argument("[args...]")
     .allowUnknownOption()
     .action(async (args) => {
-      await runAzureLocalCli(...args)
+      const az_path = path.join(path.dirname(process.execPath), "azl")
+      const az_abs_path = await lookpath(az_path)
+
+      if (!az_abs_path) {
+        console.error("Could not find az executable")
+        process.exitCode = 1
+        return
+      }
+
+      await new Promise<void>((resolve) => {
+        const proc = child_process.spawn(az_abs_path, args, {
+          stdio: "inherit",
+        })
+
+        proc.on("exit", (code) => {
+          resolve()
+          process.exitCode = code ?? 0
+        })
+      })
     })
 
   program
