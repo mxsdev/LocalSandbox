@@ -102,7 +102,7 @@ Console.WriteLine("Created Queue: " + queue.Name);
   - [x] Message defer
   - [x] Duplicate detection
   - [x] Message Batching
-  - [x] `SBQueue` properties - `lockDuration`,
+  - [x] `SBQueue` properties - `lockDuration`, `messageCount`, etc
   - [x] Scheduled messages
   - [x] Message annotations: TTL, ID, Subject, etc
   - [x] Subqueues
