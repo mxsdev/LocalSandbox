@@ -8,6 +8,12 @@ jobs:
     name: Build & Publish Docker Image
     runs-on: ubuntu-latest
     steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -34,8 +40,14 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build image
-        run: docker buildx build --platform linux/amd64,linux/arm64 . -t localsandbox/localsandbox:latest --push
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            localsandbox/localsandbox:latest
+            localsandbox/localsandbox:${{ steps.tag.outputs.tag }}
 
   bundle-cli:
     name: Build & Bundle CLI
