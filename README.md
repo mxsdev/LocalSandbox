@@ -67,7 +67,7 @@ docker exec localsandbox \
 
 ### With the Azure SDK
 
-Currently, LocalSandbox supports the management clients for Service Bus. To create a new queue in C#:
+LocalSandbox supports the SDK management clients. For example, to create a new queue in C#:
 
 ```csharp
 using Microsoft.Azure.Management.ServiceBus;
