@@ -33,7 +33,7 @@ var sbClient = new ServiceBusClient(
     });
 
 var sender = sbClient.CreateSender("default");
-await sender.SendMessageAsync(new ServiceBusMessage("Hello, World!"));
+await sender.SendMessageAsync(new("Hello, World!"));
 
 var receiver = sbClient.CreateReceiver("default");
 var message = await receiver.ReceiveMessageAsync();
@@ -42,13 +42,13 @@ Console.WriteLine(message.Body.ToString());
 ```
 
 > [!TIP]
-> LocalSandbox automatically creates a namespace and resource group called `default` every time it starts. You can disable this behavior by setting the environment variable `LOCALSANDBOX_DEFAULT_RESOURCES` to `false`.
+> LocalSandbox automatically creates a subscription, namespace, resource group and queue called `default` every time it starts. You can disable this behavior by setting the environment variable `LOCALSANDBOX_DEFAULT_RESOURCES` to `false`.
 
 ## Creating Resources
 
 ### With the Azure CLI
 
-LocalSandbox comes bundled with a command utility `azl` which is a wrapper around `az` running everything locally against LocalSandbox. For example, to create a new queue in docker you can run:
+LocalSandbox comes bundled with a command utility `azl` which is a wrapper around `az` running everything locally against LocalSandbox. For example, to create a new queue with a docker-based installation you can run:
 
 ```bash
 docker exec localsandbox \
@@ -59,7 +59,7 @@ docker exec localsandbox \
 ```
 
 > [!TIP]
-> The subscription id (account id) used by the CLI can be set with the `AZURE_SUBSCRIPTION_ID` environment variable. Subscriptions are always created lazily.
+> The subscription id (account id) used by the CLI can be set with the `AZURE_SUBSCRIPTION_ID` environment variable. Subscriptions are always created on-the-fly.
 
 ### With the Azure SDK
 
@@ -88,7 +88,7 @@ Console.WriteLine("Created Queue: " + queue.Name);
 ```
 
 > [!NOTE]
-> As is demonstrated by this example, the subscription id is provided as the bearer token for authentication. The subscription id will always be created automatically if it does not exist yet.
+> As the example demonstrates, the subscription id is provided as the bearer token for authentication. The subscription will always be created automatically if one does not yet exist.
 
 ## Features and Roadmap
 
@@ -108,7 +108,7 @@ Console.WriteLine("Created Queue: " + queue.Name);
   - [x] Subqueues
   - [ ] Transactions
   - [ ] Rules
-  - [ ] Administration client endpoints
+  - [ ] Administration client
   - [ ] WebSockets
   - [ ] All CRUD REST API endpoints
 - [ ] Azure Storage (w/ Azurite)
