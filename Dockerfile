@@ -1,22 +1,22 @@
-FROM node:20-alpine
+FROM mcr.microsoft.com/azure-cli
 
-# Install python/pip
-ENV PYTHONUNBUFFERED=1
-RUN apk add py3-pip
-RUN apk add gcc musl-dev python3-dev libffi-dev openssl-dev cargo make
-RUN pip install --upgrade --break-system-packages pip
-RUN pip install --break-system-packages azure-cli
-
-RUN az --version
+ARG TARGETARCH
 
 WORKDIR /app
 
-COPY ./dist/scripts/cjs/* /app/
+COPY ./dist/binary/localsandbox-linux-${TARGETARCH} /app/localsandbox
+
+RUN /app/localsandbox --version
+
+COPY ./packages/azure-local-cli/azure_local_cli/__main__.py /app/__main__.py
 
 RUN mkdir -p /app/azl
-COPY ./dist/binary/azl-alpine /app/azl/azl
+
+RUN echo "#!/bin/bash" > /app/azl/azl
+RUN echo "PYTHONPATH=/usr/lib64/az/lib/python3.9/site-packages python3 /app/__main__.py \$@" >> /app/azl/azl
+RUN chmod +x /app/azl/azl
 ENV PATH="/app/azl:${PATH}"
 
 RUN azl --version
 
-CMD ["node", "/app/cli.js", "run"]
+CMD ["/app/localsandbox", "run"]

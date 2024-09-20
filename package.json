@@ -28,7 +28,7 @@
     "dev:cli:watch": "tsx --watch ./scripts/cli.ts",
     "dev": "cross-env LOG_LEVEL=debug npm run dev:cli:watch run",
     "build": "npm run build:scripts:cjs",
-    "build:docker": "npm run build:scripts:cjs && GOOS=linux GOARCH=amd64 go build -o ./dist/binary/azl-alpine ./azl.go",
+    "build:docker": "npm run build:scripts:cjs && cross-env PKG_TARGET=linux-x64 npm run build:cli:localsandbox && mv ./dist/binary/localsandbox ./dist/binary/localsandbox-linux-amd64 && cross-env PKG_TARGET=linux-arm64 npm run build:cli:localsandbox && mv ./dist/binary/localsandbox ./dist/binary/localsandbox-linux-arm64",
     "build:esm": "tsup --config ./tsup.esm.config.ts && resolve-tspaths --out ./dist/esm && shx cp ./package.esm.json ./dist/esm/package.json",
     "build:cjs": "tsup --config ./tsup.cjs.config.ts && resolve-tspaths --out ./dist/cjs && shx cp ./package.cjs.json ./dist/cjs/package.json && renamer --find .d.cts --replace .d.ts ./dist/cjs/**/*.d.cts",
     "build:scripts:cjs": "tsup --config ./tsup.scripts.cjs.config.ts && shx cp ./package.cli.json ./dist/scripts/cjs/package.json",

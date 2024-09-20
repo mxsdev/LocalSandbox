@@ -28,23 +28,14 @@ jobs:
       - name: Build
         run: npm run build:docker
 
-      - name: Build image
-        run: docker build -t localsandbox/localsandbox .
-
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Publish image
-        run: docker push localsandbox/localsandbox:latest
-
-      - name: Publish image with tag
-        run: |
-          docker tag localsandbox/localsandbox localsandbox/localsandbox:${{ steps.tag.outputs.tag }}
-          docker push localsandbox/localsandbox:${{ steps.tag.outputs.tag }}
-
+      - name: Build image
+        run: docker buildx build --platform linux/amd64,linux/arm64 . -t localsandbox/localsandbox:latest --push
 
   bundle-cli:
     name: Build & Bundle CLI
