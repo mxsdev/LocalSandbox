@@ -180,7 +180,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           files:
             | 
-              ./localsandbox-linux-x64.tar.gz
-              ./localsandbox-win-x64.tar.gz
-              ./localsandbox-macos-arm64.tar.gz
-              ./localsandbox-macos-x64.tar.gz
+              /home/runner/work/LocalSandbox/LocalSandbox/localsandbox-linux-x64.tar.gz
+              /home/runner/work/LocalSandbox/LocalSandbox/localsandbox-win-x64.tar.gz
+              /home/runner/work/LocalSandbox/LocalSandbox/localsandbox-macos-arm64.tar.gz
+              /home/runner/work/LocalSandbox/LocalSandbox/localsandbox-macos-x64.tar.gz
