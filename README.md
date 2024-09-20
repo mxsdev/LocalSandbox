@@ -2,11 +2,7 @@
 
 LocalSandbox is a local emulator for Azure cloud services. Currently, the focus is on supporting [Azure Service Bus](https://docs.microsoft.com/en-us/azure/service-bus-messaging/service-bus-messaging-overview) but other services are planned.
 
-## Help & Support
-
-I have opened a [Discord server](https://discord.gg/MbauZyqzmj) for support. I'll be available there to help debug any issues you may have.
-
-Alternatively, feel free to open a [GitHub issue](https://github.com/mxsdev/LocalSandbox/issues/new) if you have a feature request or bug report.
+Feel free to open a [GitHub issue](https://github.com/mxsdev/LocalSandbox/issues/new) if you have a feature request or bug report.
 
 ## Quickstart
 
