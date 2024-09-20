@@ -19,10 +19,10 @@ const envSchema = z.object({
   LOCALSANDBOX_DEFAULT_LOCATION: z.string().optional().default("westus2"),
 
   LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID: resource_name,
-  LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES: z.coerce
+  LOCALSANDBOX_DEFAULT_RESOURCES: z.coerce
     .string()
     .optional()
-    .default("false")
+    .default("true")
     .transform((v) => v.toLowerCase() === "true" || v === "1"),
   LOCALSANDBOX_DEFAULT_RESOURCE_GROUP: resource_name,
   LOCALSANDBOX_DEFAULT_NAMESPACE: resource_name,

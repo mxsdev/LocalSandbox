@@ -70,7 +70,7 @@ public class AzureTests : IAsyncDisposable
         }
         else
         {
-            var queue = await serviceBusManagementClient.Value.Queues.CreateOrUpdateAsync(rg, ns, Guid.NewGuid().ToString(), new()
+            var queue = await serviceBusManagementClient.Value.Queues.CreateOrUpdateAsync(resourceGroupName: rg, namespaceName: ns, queueName: Guid.NewGuid().ToString(), new()
             {
                 MaxDeliveryCount = maxDeliveryCount,
                 AutoDeleteOnIdle = autoDeleteOnIdle ?? TimeSpan.FromMinutes(10),
@@ -155,7 +155,7 @@ public class AzureTests : IAsyncDisposable
         serviceBusManagementClient = new(() => new ServiceBusManagementClient(new TokenCredentials(subscriptionId))
         {
             SubscriptionId = subscriptionId,
-            BaseUri = !e2eMode ? new Uri($"https://localhost.localsandbox.sh:7329/azure") : null
+            BaseUri = !e2eMode ? new($"https://localhost.localsandbox.sh:7329/azure") : null
         });
     }
 

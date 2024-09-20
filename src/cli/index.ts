@@ -65,9 +65,9 @@ const getEnvironmentVariableHelp = (
 }
 
 const server_help = getEnvironmentVariableHelp({
-  LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES: {
-    help: "Disable creation of default resources",
-    default: "false",
+  LOCALSANDBOX_DEFAULT_RESOURCES: {
+    help: "Enable creation of default resources",
+    default: "true",
   },
 
   LOCALSANDBOX_DEFAULT_LOCATION: {

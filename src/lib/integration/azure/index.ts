@@ -22,7 +22,7 @@ export const createAzureIntegration: IntegrationFactory<
   const build = azure_routes.build()
 
   if (
-    !env.LOCALSANDBOX_DISABLE_DEFAULT_RESOURCES &&
+    env.LOCALSANDBOX_DEFAULT_RESOURCES &&
     env.LOCALSANDBOX_DEFAULT_SUBSCRIPTION_ID
   ) {
     logger?.debug(
