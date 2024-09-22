@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/mxsdev/LocalSandbox/compare/v1.0.2...v1.1.0) (2024-09-22)
+
+
+### Features
+
+* **license:** use apache license ([cae137c](https://github.com/mxsdev/LocalSandbox/commit/cae137c81d1a091e59251bd192ebe1adf6878eb7))
+
 ## [1.0.2](https://github.com/mxsdev/LocalSandbox/compare/v1.0.1...v1.0.2) (2024-09-20)
 
 
