@@ -616,8 +616,8 @@ export abstract class MessageSequence<M extends TaggedMessage> {
         }, lockDurationMs),
       })
 
-      message.message_annotations[Constants.lockedUntil] =
-        +new Date().getTime() + lockDurationMs
+      const locked_until = +Date.now() + lockDurationMs
+      message.message_annotations[Constants.lockedUntil] = new Date(locked_until)
 
       // TODO: set drained based on whether there are more messages to send
 
