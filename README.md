@@ -90,6 +90,22 @@ Console.WriteLine("Created Queue: " + queue.Name);
 > [!NOTE]
 > As the example demonstrates, the subscription id is provided as the bearer token for authentication. The subscription will always be created automatically if one does not yet exist.
 
+## Use a custom domain
+
+You can use your own domain and certificates. Generate a certificate for your domain and expose the private and public keys in a json file. The json must contains the keys in PEM format like the following:
+
+```json
+{
+    "cert": "-----BEGIN CERTIFICATE-----\n[REDACTED....]\n-----END CERTIFICATE-----",
+    "key": "-----BEGIN PRIVATE KEY-----\n[REDACTED....]\n-----END PRIVATE KEY-----"
+}
+```
+
+Then, start the container with two additional environment variables
+
+- `LOCALSANDBOX_HOSTNAME`: fully qualified domain name (FQDN) of your custom domain. Default value is `localhost.localsandbox.sh`.
+- `LOCALSANDBOX_CERT_RETRIEVAL_URL`: URL where the JSON file containing the certificate and key can be retrieved (could be hosted anywhere). Default value is `https://cert.localsandbox.sh/`.
+
 ## Features and Roadmap
 
 - [ ] Service Bus

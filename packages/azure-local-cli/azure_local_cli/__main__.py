@@ -11,7 +11,7 @@ class AttrDict(UserDict):
 import os
 
 port = int(os.environ.get("LOCALSANDBOX_PORT") or 7329)
-hostname = f"localhost.localsandbox.sh"
+hostname = os.environ.get("LOCALSANDBOX_HOSTNAME") or "localhost.localsandbox.sh"
 endpoint = f"https://{hostname}:{port}/azure"
 
 import azure.cli.core as azure_cli_core
